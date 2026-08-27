@@ -13,9 +13,9 @@ performance problems hiding behind them — N+1 above all.
 Install it, add six lines to `phpunit.xml`, and run your suite as usual. No assertions
 in your tests, no separate command, no code changes.
 
-> **Status: pre-release.** Everything documented below works and is covered by tests
-> (121 of them, on PHPUnit 10.5–13, Doctrine ORM 2–3, DBAL 3–4, MySQL and PostgreSQL).
-> The API may still shift before 1.0.
+> **Status: 0.1.0, the first public release.** Everything documented below works and is
+> covered by tests (121 of them, on PHPUnit 10.5–13, Doctrine ORM 2–3, DBAL 3–4, MySQL
+> and PostgreSQL). The API may still shift before 1.0.
 
 ## What it looks like
 

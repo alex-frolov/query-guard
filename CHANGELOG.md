@@ -6,6 +6,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-08-27
+
+The first public release. Everything below arrived at once, so the list is the
+feature set rather than a history of changes.
+
 ### Added
 
 - PHPUnit 10.5+ extension: one trace per test, opened after `setUp()` so fixture
@@ -24,4 +29,5 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 - `#[AllowQueries]` and `#[IgnoreRule]` attributes.
 - `report` and `strict` modes.
 
-[Unreleased]: https://github.com/alex-frolov/query-guard/commits/main
+[Unreleased]: https://github.com/alex-frolov/query-guard/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/alex-frolov/query-guard/releases/tag/v0.1.0
