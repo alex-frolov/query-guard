@@ -1,0 +1,41 @@
+{
+    "generated-at": "2026-08-27T07:59:25+00:00",
+    "comment": "query-guard baseline: the findings listed here do not fail the run. Commit this file; to regenerate it, run with QUERY_GUARD_GENERATE_BASELINE=1.",
+    "findings": {
+        "duplicate-query|tests/EndToEnd/Fixture/Tier1/Tier1Test.php|select id, name from settings where key = ?": {
+            "rule": "duplicate-query",
+            "place": "tests/EndToEnd/Fixture/Tier1/Tier1Test.php:15",
+            "sample": "the same query with the same values ran 3 times: SELECT id, name FROM settings WHERE key = ?"
+        },
+        "no-limit|tests/EndToEnd/Fixture/Tier1/Tier1Test.php|select * from invoices where id = ?": {
+            "rule": "no-limit",
+            "place": "tests/EndToEnd/Fixture/Tier1/Tier1Test.php:34",
+            "sample": "SELECT without LIMIT against the large table \"invoices\": SELECT * FROM invoices WHERE id = ?"
+        },
+        "no-limit|tests/EndToEnd/Fixture/Tier1/Tier1Test.php|select id from invoices where owner_id = ?": {
+            "rule": "no-limit",
+            "place": "tests/EndToEnd/Fixture/Tier1/Tier1Test.php:26",
+            "sample": "SELECT without LIMIT against the large table \"invoices\": SELECT id FROM invoices WHERE owner_id = ?"
+        },
+        "no-limit|tests/EndToEnd/Fixture/Tier1/Tier1Test.php|select id from orders where owner_id = ?": {
+            "rule": "no-limit",
+            "place": "tests/EndToEnd/Fixture/Tier1/Tier1Test.php:26",
+            "sample": "SELECT without LIMIT against the large table \"orders\": SELECT id FROM orders WHERE owner_id = ?"
+        },
+        "no-limit|tests/EndToEnd/Fixture/Tier1/Tier1Test.php|select id, total from invoices where paid = ?": {
+            "rule": "no-limit",
+            "place": "tests/EndToEnd/Fixture/Tier1/Tier1Test.php:41",
+            "sample": "SELECT without LIMIT against the large table \"invoices\": SELECT id, total FROM invoices WHERE paid = ?"
+        },
+        "query-in-loop|tests/EndToEnd/Fixture/Tier1/Tier1Test.php|mixed": {
+            "rule": "query-in-loop",
+            "place": "tests/EndToEnd/Fixture/Tier1/Tier1Test.php:26",
+            "sample": "5 queries of 5 different shapes from one place — looks like a loop"
+        },
+        "select-star|tests/EndToEnd/Fixture/Tier1/Tier1Test.php|select * from invoices where id = ?": {
+            "rule": "select-star",
+            "place": "tests/EndToEnd/Fixture/Tier1/Tier1Test.php:34",
+            "sample": "SELECT * — every column is fetched: SELECT * FROM invoices WHERE id = ?"
+        }
+    }
+}

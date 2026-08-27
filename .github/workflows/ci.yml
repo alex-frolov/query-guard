@@ -1,0 +1,157 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  tests:
+    name: PHP ${{ matrix.php }}${{ matrix.deps == 'lowest' && ' / prefer-lowest' || '' }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.2', '8.3', '8.4', '8.5']
+        deps: ['highest']
+        include:
+          # the lower bound of support: PHPUnit 10.5, Doctrine ORM 2 / DBAL 3 —
+          # the exact combination still found on real projects today
+          - php: '8.2'
+            deps: 'lowest'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: pdo_sqlite, mbstring, intl
+          coverage: none
+
+      - name: Install dependencies
+        run: composer update --prefer-dist --no-interaction --no-progress ${{ matrix.deps == 'lowest' && '--prefer-lowest' || '' }}
+
+      - name: Show resolved versions
+        run: composer show doctrine/dbal doctrine/orm phpunit/phpunit | head -20
+
+      - name: PHPUnit
+        run: vendor/bin/phpunit
+
+  static:
+    name: PHPStan (DBAL ${{ matrix.dbal }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - dbal: '4'
+            config: 'phpstan.neon.dist'
+            constraint: '^4.0'
+          - dbal: '3'
+            config: 'tools/phpstan/dbal3.neon'
+            constraint: '^3.9'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+
+      # The Driver → Connection → Statement wrappers exist in two variants, one per DBAL
+      # generation, chosen at runtime. Both have to be analysed — under each version the
+      # "other" variant is excluded
+      - name: Install dependencies
+        run: composer update --prefer-dist --no-interaction --no-progress --with "doctrine/dbal:${{ matrix.constraint }}"
+
+      - name: PHPStan
+        run: vendor/bin/phpstan analyse --no-progress --memory-limit=1G --configuration=${{ matrix.config }}
+
+  codestyle:
+    name: Code style
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+
+      - name: Install dependencies
+        run: composer update --prefer-dist --no-interaction --no-progress
+
+      - name: PHP-CS-Fixer
+        run: vendor/bin/php-cs-fixer fix --dry-run --diff
+
+      - name: Validate composer.json
+        run: composer validate --strict
+
+  tier2:
+    name: Tier 2 / ${{ matrix.platform }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: mysql
+            driver: pdo_mysql
+            extension: pdo_mysql
+          - platform: postgres
+            driver: pdo_pgsql
+            extension: pdo_pgsql
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: stand
+          MYSQL_DATABASE: stand
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -uroot -pstand"
+          --health-interval=5s --health-timeout=5s --health-retries=30
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: stand
+          POSTGRES_DB: stand
+          POSTGRES_USER: stand
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd="pg_isready -U stand -d stand"
+          --health-interval=5s --health-timeout=5s --health-retries=30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: ${{ matrix.extension }}, pdo_sqlite, mbstring, intl
+          coverage: none
+
+      - name: Install dependencies
+        run: composer update --prefer-dist --no-interaction --no-progress
+
+      # The tier 2 stand: 100 000 rows. On a fixture-sized database the plan rules are
+      # not merely useless but harmful
+      - name: Seed MySQL stand
+        if: matrix.platform == 'mysql'
+        run: mysql -h 127.0.0.1 -uroot -pstand stand < tools/stand/seed.mysql.sql
+
+      - name: Seed PostgreSQL stand
+        if: matrix.platform == 'postgres'
+        env:
+          PGPASSWORD: stand
+        run: psql -h 127.0.0.1 -U stand -d stand -f tools/stand/seed.postgres.sql
+
+      - name: Tier 2 tests
+        env:
+          QG_STAND_DRIVER: ${{ matrix.driver }}
+          QG_STAND_HOST: 127.0.0.1
+          QG_STAND_USER: ${{ matrix.platform == 'mysql' && 'root' || 'stand' }}
+          QG_STAND_PASSWORD: stand
+          QG_STAND_DB: stand
+        run: vendor/bin/phpunit --testsuite integration --filter Tier2StandTest

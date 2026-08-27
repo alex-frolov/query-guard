@@ -1,0 +1,76 @@
+<?php
+
+declare(strict_types=1);
+
+namespace QueryGuard\Test\Unit\Query;
+
+use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\TestCase;
+use QueryGuard\Query\QueryEvent;
+use QueryGuard\Query\Trace;
+use QueryGuard\TestIdentifier;
+use QueryGuard\TestOptions;
+
+#[CoversClass(Trace::class)]
+final class TraceTest extends TestCase
+{
+    public function testGroupsQueriesByFingerprintIgnoringBoundValues(): void
+    {
+        $trace = $this->trace();
+        $trace->record(new QueryEvent('SELECT * FROM activities WHERE id = ?', [1]));
+        $trace->record(new QueryEvent('SELECT * FROM activities WHERE id = ?', [2]));
+        $trace->record(new QueryEvent('SELECT * FROM users'));
+
+        $groups = $trace->groupedByFingerprint();
+
+        self::assertCount(2, $groups);
+        self::assertCount(2, $groups['select * from activities where id = ?']);
+    }
+
+    public function testFixtureEventsAreKeptApartFromTheTrace(): void
+    {
+        $trace = new Trace(
+            $this->test(),
+            TestOptions::none(),
+            [new QueryEvent('INSERT INTO users VALUES (1)')],
+        );
+        $trace->record(new QueryEvent('SELECT * FROM users'));
+
+        self::assertSame(1, $trace->count());
+        self::assertSame(1, $trace->fixtureQueryCount());
+        self::assertCount(1, $trace->fixtureEvents());
+    }
+
+    public function testDurationIsNullWhenNoAdapterReportsTiming(): void
+    {
+        $trace = $this->trace();
+        $trace->record(new QueryEvent('SELECT 1'));
+
+        self::assertNull($trace->durationMs());
+    }
+
+    public function testDurationSumsWhatIsKnown(): void
+    {
+        $trace = $this->trace();
+        $trace->record(new QueryEvent('SELECT 1', durationMs: 1.5));
+        $trace->record(new QueryEvent('SELECT 2', durationMs: 2.5));
+        $trace->record(new QueryEvent('SELECT 3'));
+
+        self::assertSame(4.0, $trace->durationMs());
+    }
+
+    public function testEmptyTrace(): void
+    {
+        self::assertTrue($this->trace()->isEmpty());
+    }
+
+    private function trace(): Trace
+    {
+        return new Trace($this->test(), TestOptions::none());
+    }
+
+    private function test(): TestIdentifier
+    {
+        return new TestIdentifier('id', 'SomeTest::testSomething');
+    }
+}

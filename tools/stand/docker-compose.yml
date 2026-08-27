@@ -1,0 +1,40 @@
+# The synthetic stand for tier 2.
+#
+# Tier 2 needs a database with real volume and statistics by definition: EXPLAIN over a
+# three-row fixture table means nothing. We have watched a competing tool report a
+# `Full table scan` error on a five-row table because InnoDB estimated it at 15.
+#
+#   docker compose -f tools/stand/docker-compose.yml up -d
+#   tools/stand/capture.sh      # capture reference plans into the fixtures
+#   docker compose -f tools/stand/docker-compose.yml down -v
+
+name: query-guard-stand
+
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: stand
+      MYSQL_DATABASE: stand
+    command: --default-storage-engine=innodb
+    volumes:
+      - ./seed.mysql.sql:/docker-entrypoint-initdb.d/seed.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-pstand"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_PASSWORD: stand
+      POSTGRES_DB: stand
+      POSTGRES_USER: stand
+    volumes:
+      - ./seed.postgres.sql:/docker-entrypoint-initdb.d/seed.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stand -d stand"]
+      interval: 5s
+      timeout: 5s
+      retries: 30

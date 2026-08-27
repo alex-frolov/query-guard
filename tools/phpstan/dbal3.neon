@@ -1,0 +1,9 @@
+# The same analysis, but for the DBAL 3 matrix entry: there it is Dbal4/* that belongs
+# to the "other" version.
+includes:
+    - ../../phpstan.neon.dist
+
+parameters:
+    excludePaths:
+        analyseAndScan!:
+            - ../../src/Adapter/Doctrine/Dbal4
