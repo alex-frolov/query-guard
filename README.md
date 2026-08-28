@@ -99,7 +99,8 @@ created, which is why the extension cannot install it for you:
 
 ```yaml
 # config/services_test.yaml
-QueryGuard\Adapter\Doctrine\Middleware:
+services:
+  QueryGuard\Adapter\Doctrine\Middleware:
     tags: ['doctrine.middleware']
 ```
 
@@ -223,6 +224,237 @@ Both work on the class as well as the method.
 `strict` mode fails the whole run (exit code 1), not an individual test: PHPUnit's event
 system gives an extension no way to mark a test as failed.
 
+## Recipes
+
+### Adopting on a legacy project
+
+You cannot fix hundreds of old tests at once, and you do not need to. The goal is to draw
+a line: everything existing goes into the baseline, everything new is checked. The steps
+below go from install to `strict`.
+
+**1. Install and enable every check.** Extension and adapter as in the Install section
+above. Keep `mode="report"` while you are still measuring the damage, and set the
+baseline path right away — step 4 writes to it:
+
+```xml
+<!-- phpunit.xml -->
+<extensions>
+    <bootstrap class="QueryGuard\Extension">
+        <parameter name="mode" value="report"/>
+        <parameter name="baseline" value="tests/query-guard-baseline.json"/>
+        <parameter name="n-plus-one-threshold" value="3"/>
+        <parameter name="duplicate-threshold" value="5"/>
+        <parameter name="query-in-loop-threshold" value="5"/>
+        <parameter name="max-queries" value="50"/>
+        <parameter name="select-star" value="true"/>
+        <parameter name="large-tables" value="users,orders"/>
+    </bootstrap>
+</extensions>
+```
+
+`max-queries` here is a probe, not the budget you intend to keep — see step 3.
+
+**2. Run the suite and save the log.** Findings and query counts go to stdout:
+
+```bash
+vendor/bin/phpunit 2>&1 | tee query-guard.log
+```
+
+**3. Pick the real `max-queries` from the log.** Every breach is printed as
+`N queries against a budget of M`, so a low probe (say 20) and a high probe (say 100)
+bracket the distribution; `grep 'against a budget' query-guard.log` lists the tests over
+each line with their exact counts:
+
+```bash
+grep 'against a budget' query-guard.log
+```
+
+Recommendations:
+
+- set the global budget near the 90th–95th percentile of ordinary business tests — a
+  number chosen "with headroom" protects nothing;
+- genuinely heavy tests (bulk import, export, reporting) get their own
+  `#[AllowQueries(N)]` instead of an inflated global budget;
+- legacy code you cannot touch: leave its breaches to be absorbed by the baseline
+  (step 4) — `query-count` findings are keyed per test, so new tests are still checked
+  against the budget.
+
+**4. Generate the baseline and commit it:**
+
+```bash
+QUERY_GUARD_GENERATE_BASELINE=1 vendor/bin/phpunit
+```
+
+Everything currently found lands in `tests/query-guard-baseline.json`; the file goes into
+the repository.
+
+**5. Decide on tier 2 — only if the tests run on a database with real volume.** Plan
+rules need rows and statistics; on a three-row fixture database the optimiser's estimate
+lies and the rules do more harm than good (see the Tier 2 section above). If your test
+database is a production copy or is seeded at scale, add:
+
+```xml
+<parameter name="tier2" value="true"/>
+```
+
+and regenerate the baseline (step 4), so existing plan findings are recorded as well.
+
+**6. Re-run and verify:**
+
+```bash
+vendor/bin/phpunit 2>&1 | tee query-guard-after.log
+```
+
+The summary must show `silenced by baseline: N` and stay otherwise empty — anything that
+still appears is either a flaky callsite or a regression between the two runs, and the
+baseline has nothing to do with it.
+
+**7. Switch the mode to `strict`:**
+
+```xml
+<parameter name="mode" value="strict"/>
+```
+
+From now on every finding outside the baseline fails the run: a new N+1 in a new test, a
+moved callsite of an old one, a budget breach in a test whose name did not exist when the
+baseline was written.
+
+**One habit worth adopting together with the tool:** prepare test data in `setUp()`, not
+in the test body. The trace opens after `setUp()` finishes, so factory INSERTs there are
+kept out of the analysis; the same creation loop inside a test body is a textbook
+`n-plus-one`/`duplicate-query` false positive — on your own fixtures.
+
+### Starting a new project
+
+No legacy, no baseline: every finding is either a bug you fix or an exception you
+justify in writing. Enable everything, including tier 2 as soon as the test database
+carries real volume; keep `report` while triaging:
+
+```xml
+<!-- phpunit.xml -->
+<extensions>
+    <bootstrap class="QueryGuard\Extension">
+        <parameter name="mode" value="report"/>
+        <parameter name="n-plus-one-threshold" value="3"/>
+        <parameter name="duplicate-threshold" value="5"/>
+        <parameter name="query-in-loop-threshold" value="5"/>
+        <parameter name="max-queries" value="30"/>
+        <parameter name="select-star" value="true"/>
+        <parameter name="large-tables" value="users,orders"/>
+        <parameter name="tier2" value="true"/>
+    </bootstrap>
+</extensions>
+```
+
+**1. Run and save the log:**
+
+```bash
+vendor/bin/phpunit 2>&1 | tee query-guard.log
+```
+
+**2. Triage every finding.** Three possible verdicts:
+
+- *True positive* — fix the code, not the config: eager fetch (`JOIN`/`IN`) instead of
+  lazy loading, one batched query instead of one per row, the missing index behind a
+  `table-scan` or `no-possible-index`.
+- *Deliberately heavy test* — bulk import, report export: an exception on the test
+  (step 3), not a raised global budget.
+- *False positive* — a rule judged a pattern it cannot see through: an exception on the
+  test with a comment saying why.
+
+**3. Exceptions — how to set them correctly:**
+
+```php
+use QueryGuard\Attribute\AllowQueries;
+use QueryGuard\Attribute\IgnoreRule;
+
+// a budget sized to the test's real work — its actual count is in the log
+#[AllowQueries(120)]
+public function testBulkImport(): void
+
+// switch off exactly the rule that misjudges this test; the argument is the rule id
+// verbatim from the finding header: [warning] n-plus-one — ...
+#[IgnoreRule('n-plus-one')]
+public function testLegacyPdfExport(): void
+
+// a whole class may carry the attributes instead of repeating them per test
+#[IgnoreRule('select-star')]
+final class ReportQueryTest extends TestCase
+```
+
+A method-level `#[AllowQueries]` overrides a class-level one; `#[IgnoreRule]` is
+repeatable and adds to whatever the class ignores. Keep exceptions narrow: one rule on
+one method beats a class-wide ignore of three. An exception without a reason comment is
+where the rot starts.
+
+**4. When the log is clean, switch to `strict`:**
+
+```xml
+<parameter name="mode" value="strict"/>
+```
+
+On a new project the baseline is optional — every finding is fresh enough to fix. If the
+suite ever outgrows that, the `baseline` parameter is right there.
+
+### Keeping smoke/load tests out of query-guard
+
+Performance smoke tests should run without the extension: the DBAL middleware and the
+per-shape `EXPLAIN` of tier 2 distort the very timings those tests exist to measure, and
+`strict` fails the run on a query budget that is the subject of the test, not a bug. The
+setup: a group, a separate config, no extension in it.
+
+**1. Put the tests in their own group:**
+
+```php
+use PHPUnit\Framework\Attributes\Group;
+
+#[Group('smoke')]
+final class AuctionBidLoadSmokeTest extends TestCase
+```
+
+**2. Exclude the group from normal runs**, so the parallel suite does not race the load
+measurements over CPU and database — either in the config:
+
+```xml
+<testsuite name="default">
+    <directory>tests</directory>
+    <exclude>
+        <group>smoke</group>
+    </exclude>
+</testsuite>
+```
+
+or on the command line: `vendor/bin/phpunit --exclude-group=smoke`.
+
+**3. Add `phpunit.smoke.xml`** — a copy of the main config with the
+`<bootstrap class="QueryGuard\Extension">` block removed and nothing else changed: same
+testsuites, same bootstrap file, same PHP settings.
+
+**4. Wire both commands into composer:**
+
+```json
+{
+    "scripts": {
+        "test": "phpunit --exclude-group=smoke",
+        "test:smoke": "phpunit --configuration=phpunit.smoke.xml --group=smoke"
+    }
+}
+```
+
+or into a Makefile:
+
+```make
+test:
+	vendor/bin/phpunit --exclude-group=smoke
+
+test-smoke:
+	vendor/bin/phpunit --configuration=phpunit.smoke.xml --group=smoke
+```
+
+Two habits keep this honest: run the smoke suite sequentially — parallel workers destroy
+the measurements — and port every change of `phpunit.xml` into `phpunit.smoke.xml`; a
+config that has silently drifted is worse than no config at all.
+
 ## Requirements
 
 PHP 8.2+, PHPUnit 10.5 / 11 / 12 / 13.
@@ -234,10 +466,10 @@ Tier 2: MySQL 8 / MariaDB or PostgreSQL.
 No local PHP needed — everything runs in containers:
 
 ```bash
-./dev.sh composer install
-QG_IMAGE=php:8.5-cli ./dev.sh php vendor/bin/phpunit
-QG_IMAGE=php:8.5-cli ./dev.sh php vendor/bin/phpstan analyse --memory-limit=1G
-QG_IMAGE=php:8.5-cli ./dev.sh php vendor/bin/php-cs-fixer fix
+docker run --rm -v "$PWD":/app -w /app -e COMPOSER_CACHE_DIR=/tmp/composer-cache composer:2 composer install
+docker run --rm -v "$PWD":/app -w /app php:8.5-cli php vendor/bin/phpunit
+docker run --rm -v "$PWD":/app -w /app php:8.5-cli php vendor/bin/phpstan analyse --memory-limit=1G
+docker run --rm -v "$PWD":/app -w /app php:8.5-cli php vendor/bin/php-cs-fixer fix
 ```
 
 Tier 2 is verified against a synthetic stand with 100 000 rows:
