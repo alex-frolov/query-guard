@@ -22,6 +22,8 @@ use QueryGuard\Rule\QueryInLoopRule;
 use QueryGuard\Rule\RuleEngine;
 use QueryGuard\Rule\SelectStarRule;
 use QueryGuard\Rule\Tier2Factory;
+use QueryGuard\Subscriber\Test\ErroredSubscriber;
+use QueryGuard\Subscriber\Test\FailedSubscriber;
 use QueryGuard\Subscriber\Test\FinishedSubscriber;
 use QueryGuard\Subscriber\Test\PreparationStartedSubscriber;
 use QueryGuard\Subscriber\Test\PreparedSubscriber;
@@ -60,11 +62,18 @@ final class Extension implements PHPUnitExtension
         $stream = fopen($configuration->outputToStandardErrorStream() ? 'php://stderr' : 'php://stdout', 'wb');
 
         if (false === $stream) {
+            // there is nowhere to print the summary, so collecting would only cost
+            QueryGuard::deactivate();
+
             return;
         }
 
         $callsiteResolver = CallsiteResolver::default();
         $report = new Report();
+
+        foreach ($config->warnings as $warning) {
+            $report->addNotice($warning);
+        }
 
         $tier2 = $config->tier2
             ? new Tier2Factory($adapters, $collector, $callsiteResolver, $config->minRows)
@@ -79,18 +88,27 @@ final class Extension implements PHPUnitExtension
             new QueryCountRule($config->maxQueries, $callsiteResolver),
         ], null === $tier2 ? null : $tier2->rules(...));
 
-        $baselinePath = '' === $config->baselinePath
-            ? ''
-            : (str_starts_with($config->baselinePath, '/') ? $config->baselinePath : (getcwd() ?: '.').'/'.$config->baselinePath);
-
         $basePath = getcwd() ?: '';
+        $baselinePath = self::absolutePath($config->baselinePath, $basePath);
+
         $baseline = '' === $baselinePath ? Baseline::empty($basePath) : Baseline::fromFile($baselinePath, $basePath);
         $generated = $config->generateBaseline && '' !== $baselinePath ? Baseline::empty($basePath) : null;
+
+        if ($config->generateBaseline && '' === $baselinePath) {
+            // the env var alone writes nothing, and a run that quietly did nothing looks
+            // exactly like a run that succeeded
+            $report->addNotice(sprintf(
+                '%s is set, but no "baseline" parameter is configured — there is nowhere to write, so nothing was generated.',
+                ExtensionConfiguration::GENERATE_BASELINE_ENV,
+            ));
+        }
 
         $facade->registerSubscribers(
             new PreparationStartedSubscriber($collector, $adapters),
             new PreparedSubscriber($collector, $adapters),
             new FinishedSubscriber($collector, $engine, $report, $baseline, $generated),
+            new FailedSubscriber($report),
+            new ErroredSubscriber($report),
             new ExecutionFinishedSubscriber(
                 $report,
                 new ConsoleReporter($stream, getcwd() ?: ''),
@@ -102,5 +120,25 @@ final class Extension implements PHPUnitExtension
                 $tier2,
             ),
         );
+    }
+
+    /**
+     * A relative baseline path is resolved against the working directory.
+     *
+     * "Absolute" is tested for both spellings on purpose: the package normalises Windows
+     * paths elsewhere (`CallsiteResolver`), and a `C:\` baseline must not end up
+     * appended to the working directory.
+     */
+    private static function absolutePath(string $path, string $basePath): string
+    {
+        if ('' === $path) {
+            return '';
+        }
+
+        $isAbsolute = str_starts_with($path, '/')
+            || str_starts_with($path, '\\')          // a UNC share
+            || 1 === preg_match('/^[A-Za-z]:[\\\\\/]/', $path);
+
+        return $isAbsolute ? $path : ('' === $basePath ? '.' : $basePath).'/'.$path;
     }
 }

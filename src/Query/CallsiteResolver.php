@@ -15,9 +15,18 @@ namespace QueryGuard\Query;
  * file names. A competing tool built that list by enumeration, forgot one of its own
  * classes, and every callsite it reports now points inside the package itself. Relying
  * on the substring `vendor/` is no better — a package may well be installed by path.
+ *
+ * The verdict per file is memoised. Resolution happens on every recorded query now that
+ * the raw stack is no longer kept (see `QueryEvent`), and a stack is mostly the same few
+ * dozen framework files over and over: seven regular expressions per frame turn into one
+ * hash lookup after the first sighting. The cache is bounded by the number of distinct
+ * files in the project.
  */
 final class CallsiteResolver
 {
+    /** @var array<string, bool> */
+    private array $verdicts = [];
+
     /**
      * @param list<string> $skipPatterns regular expressions matched against the file path
      */
@@ -71,6 +80,11 @@ final class CallsiteResolver
     }
 
     private function isSkipped(string $file): bool
+    {
+        return $this->verdicts[$file] ??= $this->matchesSkipPattern($file);
+    }
+
+    private function matchesSkipPattern(string $file): bool
     {
         $normalized = str_replace('\\', '/', $file);
 

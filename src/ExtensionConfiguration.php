@@ -19,6 +19,14 @@ use QueryGuard\Rule\QueryInLoopRule;
  * Tier 2 (`tier2`) is off for the same reason, only a stronger one: it needs a database
  * with real volume and statistics. On a three-row test database the plan rules are not
  * merely useless but harmful — the optimiser's own estimate lies there.
+ *
+ * **A value that could not be understood produces a warning, never a silent default.**
+ * The rules themselves say out loud when they cannot judge; the configuration owes the
+ * same honesty. `mode="strickt"` used to fall back to `report` without a word, and a
+ * suite that nobody was failing looked exactly like a suite with nothing to report.
+ *
+ * A misspelled parameter *name* still cannot be caught: `ParameterCollection` answers
+ * `has()` and `get()` and offers no way to enumerate what was actually written.
  */
 final readonly class ExtensionConfiguration
 {
@@ -26,6 +34,8 @@ final readonly class ExtensionConfiguration
 
     /**
      * @param list<string> $largeTables
+     * @param list<string> $warnings    parameters that could not be understood; the
+     *                                  extension puts these into the summary
      */
     public function __construct(
         public Mode $mode = Mode::Report,
@@ -39,23 +49,27 @@ final readonly class ExtensionConfiguration
         public bool $generateBaseline = false,
         public bool $tier2 = false,
         public int $minRows = PlanRule::DEFAULT_MIN_ROWS,
+        public array $warnings = [],
     ) {
     }
 
     public static function fromParameters(ParameterCollection $parameters): self
     {
+        $warnings = [];
+
         return new self(
-            mode: $parameters->has('mode') ? Mode::fromString($parameters->get('mode')) : Mode::Report,
-            maxQueries: self::positiveInt($parameters, 'max-queries', null),
-            nPlusOneThreshold: self::positiveInt($parameters, 'n-plus-one-threshold', NPlusOneRule::DEFAULT_THRESHOLD, 2) ?? NPlusOneRule::DEFAULT_THRESHOLD,
-            duplicateThreshold: self::positiveInt($parameters, 'duplicate-threshold', DuplicateQueryRule::DEFAULT_THRESHOLD, 2) ?? DuplicateQueryRule::DEFAULT_THRESHOLD,
-            queryInLoopThreshold: self::positiveInt($parameters, 'query-in-loop-threshold', QueryInLoopRule::DEFAULT_THRESHOLD, 2) ?? QueryInLoopRule::DEFAULT_THRESHOLD,
-            selectStar: self::bool($parameters, 'select-star'),
+            mode: self::mode($parameters, $warnings),
+            maxQueries: self::positiveInt($parameters, 'max-queries', null, 1, $warnings),
+            nPlusOneThreshold: self::positiveInt($parameters, 'n-plus-one-threshold', NPlusOneRule::DEFAULT_THRESHOLD, 2, $warnings) ?? NPlusOneRule::DEFAULT_THRESHOLD,
+            duplicateThreshold: self::positiveInt($parameters, 'duplicate-threshold', DuplicateQueryRule::DEFAULT_THRESHOLD, 2, $warnings) ?? DuplicateQueryRule::DEFAULT_THRESHOLD,
+            queryInLoopThreshold: self::positiveInt($parameters, 'query-in-loop-threshold', QueryInLoopRule::DEFAULT_THRESHOLD, 2, $warnings) ?? QueryInLoopRule::DEFAULT_THRESHOLD,
+            selectStar: self::bool($parameters, 'select-star', $warnings),
             largeTables: self::list($parameters, 'large-tables'),
             baselinePath: $parameters->has('baseline') ? trim($parameters->get('baseline')) : '',
             generateBaseline: self::generateBaselineRequested(),
-            tier2: self::bool($parameters, 'tier2'),
-            minRows: self::positiveInt($parameters, 'min-rows', PlanRule::DEFAULT_MIN_ROWS) ?? PlanRule::DEFAULT_MIN_ROWS,
+            tier2: self::bool($parameters, 'tier2', $warnings),
+            minRows: self::positiveInt($parameters, 'min-rows', PlanRule::DEFAULT_MIN_ROWS, 1, $warnings) ?? PlanRule::DEFAULT_MIN_ROWS,
+            warnings: $warnings,
         );
     }
 
@@ -75,7 +89,34 @@ final readonly class ExtensionConfiguration
         return \in_array(strtolower(trim($value)), ['1', 'true', 'yes', 'on'], true);
     }
 
-    private static function positiveInt(ParameterCollection $parameters, string $name, ?int $default, int $minimum = 1): ?int
+    /**
+     * @param list<string> $warnings
+     */
+    private static function mode(ParameterCollection $parameters, array &$warnings): Mode
+    {
+        if (!$parameters->has('mode')) {
+            return Mode::Report;
+        }
+
+        $raw = trim($parameters->get('mode'));
+        $mode = Mode::tryFrom(strtolower($raw));
+
+        if (null === $mode) {
+            $warnings[] = sprintf(
+                'mode="%s" is not a mode — the run went ahead in "report", where nothing fails. Expected: report, strict.',
+                $raw,
+            );
+
+            return Mode::Report;
+        }
+
+        return $mode;
+    }
+
+    /**
+     * @param list<string> $warnings
+     */
+    private static function positiveInt(ParameterCollection $parameters, string $name, ?int $default, int $minimum, array &$warnings): ?int
     {
         if (!$parameters->has($name)) {
             return $default;
@@ -84,19 +125,46 @@ final readonly class ExtensionConfiguration
         $value = trim($parameters->get($name));
 
         if ('' === $value || !ctype_digit($value) || (int) $value < $minimum) {
+            $warnings[] = sprintf(
+                '%s="%s" is not a whole number of %d or more — %s',
+                $name,
+                $value,
+                $minimum,
+                null === $default
+                    ? 'the rule stays silent, as if the parameter had not been set at all.'
+                    : sprintf('the default %d was used instead.', $default),
+            );
+
             return $default;
         }
 
         return (int) $value;
     }
 
-    private static function bool(ParameterCollection $parameters, string $name): bool
+    /**
+     * @param list<string> $warnings
+     */
+    private static function bool(ParameterCollection $parameters, string $name, array &$warnings): bool
     {
         if (!$parameters->has($name)) {
             return false;
         }
 
-        return \in_array(strtolower(trim($parameters->get($name))), ['1', 'true', 'yes', 'on'], true);
+        $value = strtolower(trim($parameters->get($name)));
+
+        if (\in_array($value, ['1', 'true', 'yes', 'on'], true)) {
+            return true;
+        }
+
+        if (!\in_array($value, ['0', 'false', 'no', 'off', ''], true)) {
+            $warnings[] = sprintf(
+                '%s="%s" is not a yes/no value — read as "off". Expected: true, false, 1, 0, yes, no, on, off.',
+                $name,
+                trim($parameters->get($name)),
+            );
+        }
+
+        return false;
     }
 
     /**

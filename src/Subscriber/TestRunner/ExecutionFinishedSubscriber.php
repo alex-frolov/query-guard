@@ -12,6 +12,7 @@ use QueryGuard\Collector\DefaultQueryCollector;
 use QueryGuard\Mode;
 use QueryGuard\Report\Report;
 use QueryGuard\Report\Reporter;
+use QueryGuard\Rule\Tier2Factory;
 
 /**
  * The end-of-run summary and the exit code.
@@ -26,7 +27,7 @@ final class ExecutionFinishedSubscriber implements PHPUnitExecutionFinishedSubsc
         private readonly Mode $mode,
         private readonly ?Baseline $generated = null,
         private readonly string $baselinePath = '',
-        private readonly ?\QueryGuard\Rule\Tier2Factory $tier2 = null,
+        private readonly ?Tier2Factory $tier2 = null,
     ) {
     }
 
@@ -96,7 +97,13 @@ final class ExecutionFinishedSubscriber implements PHPUnitExecutionFinishedSubsc
         if (null === $this->generated && Mode::Strict === $this->mode && $this->report->hasFindings()) {
             // PHPUnit's event system lets an extension neither fail a test nor change
             // the exit code. The only point that works is shutdown: it runs after
-            // PHPUnit has already returned its own code.
+            // PHPUnit has already returned its own code — and therefore replaces it.
+            // When PHPUnit is failing the run anyway, its code is the more specific one
+            // (2 for errors, 1 for failures) and is left alone.
+            if ($this->report->isRunnerFailing()) {
+                return;
+            }
+
             register_shutdown_function(static function (): void {
                 exit(1);
             });

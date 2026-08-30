@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\DB;
 use QueryGuard\Adapter\Explainer;
 use QueryGuard\Adapter\OrmAdapter;
 use QueryGuard\Collector\QueryCollector;
+use QueryGuard\Query\CallsiteResolver;
 use QueryGuard\Query\QueryEvent;
 use QueryGuard\QueryGuard;
 
@@ -73,19 +74,25 @@ final class EloquentAdapter implements OrmAdapter
             return self::$attached = true;
         }
 
-        $listener = static function (QueryExecuted $query) use ($collector): void {
+        $callsiteResolver = CallsiteResolver::default();
+
+        $listener = static function (QueryExecuted $query) use ($collector, $callsiteResolver): void {
             $sink = $collector ?? QueryGuard::collector();
 
             if (!$sink->isRecording()) {
                 return;
             }
 
+            // resolved here rather than stored: 200 frames per query held until the end
+            // of the test cost ~106 MB per 1000 queries — see QueryEvent
+            $callsite = $callsiteResolver->resolve(debug_backtrace(\DEBUG_BACKTRACE_IGNORE_ARGS, 200));
+
             $sink->record(new QueryEvent(
                 sql: $query->sql,
                 params: array_values($query->bindings),
                 durationMs: $query->time,
                 connection: $query->connectionName,
-                stack: debug_backtrace(\DEBUG_BACKTRACE_IGNORE_ARGS, 200),
+                callsite: $callsite,
             ));
         };
 

@@ -50,8 +50,13 @@ final class PostgresPlatformDriver implements PlatformDriver
     public function relationSizeSql(): string
     {
         // `Plan Rows` counts rows returned, not rows scanned, so the table size has to
-        // be asked for separately
-        return 'SELECT reltuples::bigint AS rows FROM pg_class WHERE relname = ?';
+        // be asked for separately.
+        //
+        // Resolved through `to_regclass` rather than `WHERE relname = ?`: `relname` is
+        // unique only within a schema, so a plain name match picks an arbitrary one of
+        // the same-named tables — and `search_path` is exactly what decides which table
+        // the query under study actually read.
+        return 'SELECT reltuples::bigint AS rows FROM pg_class WHERE oid = to_regclass(?)';
     }
 
     public function parsePlan(string $raw): Plan

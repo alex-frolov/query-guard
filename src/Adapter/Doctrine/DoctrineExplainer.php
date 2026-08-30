@@ -37,9 +37,23 @@ final class DoctrineExplainer implements Explainer
         $statement = $this->connection->prepare($sql);
 
         foreach ($params as $key => $value) {
-            // calling bindValue is compatible with DBAL 3 and 4 — only the signatures
-            // diverge when overriding, not when calling (see Dbal3\Statement / Dbal4\Statement)
-            $statement->bindValue($key, $value, ParameterType::STRING);
+            // Calling bindValue is compatible with DBAL 3 and 4 — only the signatures
+            // diverge when overriding, not when calling (see Dbal3\Statement / Dbal4\Statement).
+            //
+            // Binding everything as a string is what MySQL forgives and PostgreSQL does
+            // not: `WHERE int_column = $1` with a text parameter fails outright, and the
+            // EXPLAIN then lands in the "failed" counter for a reason that has nothing to
+            // do with the query under study.
+            //
+            // Written inline and without a helper on purpose: in DBAL 3 `ParameterType`
+            // is a class of int constants, in DBAL 4 an enum. A method declaring
+            // `: ParameterType` would be a TypeError on DBAL 3; a `match` at the call
+            // site is whatever the installed version says it is.
+            $statement->bindValue($key, $value, match (true) {
+                null === $value => ParameterType::NULL,
+                \is_int($value) => ParameterType::INTEGER,
+                default => ParameterType::STRING,
+            });
         }
 
         return $statement->execute()->fetchAllAssociative();

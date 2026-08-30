@@ -14,7 +14,7 @@ Install it, add six lines to `phpunit.xml`, and run your suite as usual. No asse
 in your tests, no separate command, no code changes.
 
 > **Status: 0.1.0, the first public release.** Everything documented below works and is
-> covered by tests (121 of them, on PHPUnit 10.5–13, Doctrine ORM 2–3, DBAL 3–4, MySQL
+> covered by tests (154 of them, on PHPUnit 10.5–13, Doctrine ORM 2–3, DBAL 3–4, MySQL
 > and PostgreSQL). The API may still shift before 1.0.
 
 ## What it looks like
@@ -131,6 +131,9 @@ QueryGuard::collector()->record(new QueryEvent(
 Outside a PHPUnit run the collector is a null object: this code does nothing and costs
 nothing.
 
+If you already know where the query came from, pass `callsite:` instead of `stack:` and
+skip the stack walk entirely — that is what both built-in adapters do.
+
 ## Rules
 
 ### Tier 1 — works on day one, no reference database needed
@@ -171,6 +174,56 @@ must never be the same output.
 watched a competitor report `error: Full table scan` on a five-row table. The one
 exception is `no-possible-index`: a missing index is a fact about the schema, true even
 when the table is empty.
+
+## When query-guard stays silent
+
+A tool that shows green when it did not look is worse than no tool. Everything on this
+list is printed as a notice in the summary — except the last three, which are silent by
+design:
+
+| Situation | What you see |
+|---|---|
+| No ORM found in the project | `neither Doctrine nor Eloquent was found` |
+| ORM found, interception never took | the adapter is named, with the specific fix |
+| Interception worked, zero queries all suite | `not "all clear", it is "nothing to look at"` |
+| Queries outside a test (bootstrap, data providers) | counted, and the count is reported |
+| A configuration value it could not read | the parameter, the value, and what was used instead |
+| `tier2` on, no connection ever appeared | `no plans were looked at` |
+| `tier2` on an unsupported platform | the platform is named; supported ones listed |
+| `no-possible-index` on PostgreSQL | the rule says it cannot judge — not that all is well |
+| `temporary-table` on PostgreSQL | same |
+| **`--no-output`** | nothing: the extension does not load at all |
+| **A table below `min-rows`** | nothing: plan rules deliberately do not judge small tables |
+| **`#[IgnoreRule]` / a baseline entry** | the baseline count is shown; a per-test ignore is not |
+
+Two more worth knowing:
+
+- **Tier 2 does not work on Eloquent.** `QueryExecuted` gives no access to a connection
+  on which `EXPLAIN` could run inside the same transaction, and there is nothing to
+  quietly substitute. Tier 1 works fully.
+- **Queries made in `setUp()` are not analysed.** They are counted and shown separately
+  (`in setUp: N`). That is the decision the whole false-positive story rests on — a
+  factory creating 50 rows in a loop is 50 identical INSERTs from one callsite.
+
+## What it costs
+
+Worth knowing before putting it in CI, and measured rather than estimated:
+
+| | Cost |
+|---|---|
+| Outside a PHPUnit run | nothing. The collector is a null object and no stack is captured |
+| Between tests, in `setUp()` | a query is recorded; no rule runs |
+| Per traced query | one `debug_backtrace` (200 frames) and one callsite resolution — **~0.006 ms, i.e. ~0.15 s per 25 000 queries** |
+| Memory per traced query | SQL, bound values and one callsite — **~0.5 MB per 1000 queries**, freed when the test ends |
+| Tier 2 | one `EXPLAIN` per *distinct query shape* per run, not per query; on PostgreSQL one extra size lookup per table |
+| End of run | rules run over each trace as its test finishes; the summary is printed once |
+
+The stack is captured only while a test is being traced, and only the resolved callsite
+is kept — 200 raw frames per query cost about 106 MB per 1000 queries and used to be the
+one way this tool could hurt a suite.
+
+Tier 2 is the part with a real price: it talks to the database. Its own queries are
+excluded from the trace, so the tool never counts its own traffic.
 
 ## Baseline
 
@@ -221,10 +274,49 @@ Both work on the class as well as the method.
 | `tier2` | Enable plan rules | `false` |
 | `min-rows` | Table size below which plan rules do not judge | `1000` |
 
+A value that cannot be read — `mode="strickt"`, `max-queries="lots"` — produces a warning
+in the summary naming the parameter, the value and what was used instead. It never falls
+back in silence. A misspelled parameter *name* is the one thing that cannot be caught:
+PHPUnit's `ParameterCollection` offers no way to enumerate what was actually written.
+
 `strict` mode fails the whole run (exit code 1), not an individual test: PHPUnit's event
-system gives an extension no way to mark a test as failed.
+system gives an extension no way to mark a test as failed. When PHPUnit is already
+failing the run for its own reasons, its exit code is left alone — it is the more
+specific one.
 
 ## Recipes
+
+### Catching an N+1 in five minutes
+
+No baseline, no strict mode, no tier 2 — just point it at one test and read the output.
+
+**1. Install the extension and wire the adapter** (Install section above). Defaults are
+fine: `n-plus-one`, `duplicate-query` and `query-in-loop` are on out of the box, the
+noisy rules are off.
+
+**2. Run the one test you suspect:**
+
+```bash
+vendor/bin/phpunit --filter testExportAction
+```
+
+**3. Read the summary.** A finding names the rule, the test, the diagnosis and the line:
+
+```
+  * [error] n-plus-one — App\Tests\Controller\TimesheetControllerTest::testExportAction
+    App\Entity\Timesheet::$tags — lazy-loaded association, 10 queries
+    src/Entity/Timesheet.php:418
+```
+
+`[error]` means the adapter recognised lazy loading and there is nothing left to guess.
+`[warning]` means only the shape heuristic fired — same query, same place, different
+values — and it is worth a look but not a certainty.
+
+**Nothing found?** Check the top of the summary before concluding there is no problem:
+`tests traced: 1, queries: 0` means interception never took, and the notice below it says
+what to fix. See [When query-guard stays silent](#when-query-guard-stays-silent).
+
+When you are ready to hold the whole suite to this, read on.
 
 ### Adopting on a legacy project
 
@@ -234,7 +326,7 @@ below go from install to `strict`.
 
 **1. Install and enable every check.** Extension and adapter as in the Install section
 above. Keep `mode="report"` while you are still measuring the damage, and set the
-baseline path right away — step 4 writes to it:
+baseline path right away — step 5 writes to it:
 
 ```xml
 <!-- phpunit.xml -->
@@ -252,7 +344,7 @@ baseline path right away — step 4 writes to it:
 </extensions>
 ```
 
-`max-queries` here is a probe, not the budget you intend to keep — see step 3.
+`max-queries` here is a probe, not the budget you intend to keep — see steps 3 and 4.
 
 **2. Run the suite and save the log.** Findings and query counts go to stdout:
 
@@ -260,10 +352,11 @@ baseline path right away — step 4 writes to it:
 vendor/bin/phpunit 2>&1 | tee query-guard.log
 ```
 
-**3. Pick the real `max-queries` from the log.** Every breach is printed as
-`N queries against a budget of M`, so a low probe (say 20) and a high probe (say 100)
-bracket the distribution; `grep 'against a budget' query-guard.log` lists the tests over
-each line with their exact counts:
+**3. Pick the real `max-queries` from the log.** Only breaches are printed, as
+`N queries against a budget of M` — so one run shows you the tests above the probe and
+nothing about the rest. To see the shape of the distribution, run it twice: once with a
+low probe (say 20) and once with a high one (say 100). Between the two you have every
+test's exact count.
 
 ```bash
 grep 'against a budget' query-guard.log
@@ -279,7 +372,18 @@ Recommendations:
   (step 4) — `query-count` findings are keyed per test, so new tests are still checked
   against the budget.
 
-**4. Generate the baseline and commit it:**
+**4. Write the budget you picked back into `phpunit.xml`** — the probe from step 1 is
+still in there, and step 5 is about to freeze whatever it produces:
+
+```xml
+<parameter name="max-queries" value="35"/>
+```
+
+Do this before generating the baseline, not after. A baseline generated against the probe
+records `query-count` findings at the wrong threshold, and lowering the budget later then
+looks like a wave of regressions.
+
+**5. Generate the baseline and commit it:**
 
 ```bash
 QUERY_GUARD_GENERATE_BASELINE=1 vendor/bin/phpunit
@@ -288,7 +392,12 @@ QUERY_GUARD_GENERATE_BASELINE=1 vendor/bin/phpunit
 Everything currently found lands in `tests/query-guard-baseline.json`; the file goes into
 the repository.
 
-**5. Decide on tier 2 — only if the tests run on a database with real volume.** Plan
+> **Set that variable for the one command, never in CI.** With it on, the run always
+> passes and always rewrites the baseline — the quietest possible way to switch the tool
+> off for good. If the variable is set but no `baseline` parameter is configured, the
+> summary says so and nothing is written.
+
+**6. Decide on tier 2 — only if the tests run on a database with real volume.** Plan
 rules need rows and statistics; on a three-row fixture database the optimiser's estimate
 lies and the rules do more harm than good (see the Tier 2 section above). If your test
 database is a production copy or is seeded at scale, add:
@@ -297,9 +406,9 @@ database is a production copy or is seeded at scale, add:
 <parameter name="tier2" value="true"/>
 ```
 
-and regenerate the baseline (step 4), so existing plan findings are recorded as well.
+and regenerate the baseline (step 5), so existing plan findings are recorded as well.
 
-**6. Re-run and verify:**
+**7. Re-run and verify:**
 
 ```bash
 vendor/bin/phpunit 2>&1 | tee query-guard-after.log
@@ -309,7 +418,7 @@ The summary must show `silenced by baseline: N` and stay otherwise empty — any
 still appears is either a flaky callsite or a regression between the two runs, and the
 baseline has nothing to do with it.
 
-**7. Switch the mode to `strict`:**
+**8. Switch the mode to `strict`:**
 
 ```xml
 <parameter name="mode" value="strict"/>
@@ -327,8 +436,8 @@ kept out of the analysis; the same creation loop inside a test body is a textboo
 ### Starting a new project
 
 No legacy, no baseline: every finding is either a bug you fix or an exception you
-justify in writing. Enable everything, including tier 2 as soon as the test database
-carries real volume; keep `report` while triaging:
+justify in writing. Enable everything that works on day one and keep `report` while
+triaging:
 
 ```xml
 <!-- phpunit.xml -->
@@ -340,10 +449,20 @@ carries real volume; keep `report` while triaging:
         <parameter name="query-in-loop-threshold" value="5"/>
         <parameter name="max-queries" value="30"/>
         <parameter name="select-star" value="true"/>
-        <parameter name="large-tables" value="users,orders"/>
-        <parameter name="tier2" value="true"/>
     </bootstrap>
 </extensions>
+```
+
+Two more parameters are worth adding, but only once each condition holds — neither has a
+sensible value in the abstract:
+
+```xml
+<!-- your own large tables, by name; the rule is silent without this list -->
+<parameter name="large-tables" value="users,orders"/>
+
+<!-- only when the test database carries real volume: on a fixture-sized one the
+     optimiser's estimate lies and the plan rules do more harm than good -->
+<parameter name="tier2" value="true"/>
 ```
 
 **1. Run and save the log:**
@@ -400,8 +519,11 @@ suite ever outgrows that, the `baseline` parameter is right there.
 
 Performance smoke tests should run without the extension: the DBAL middleware and the
 per-shape `EXPLAIN` of tier 2 distort the very timings those tests exist to measure, and
-`strict` fails the run on a query budget that is the subject of the test, not a bug. The
-setup: a group, a separate config, no extension in it.
+`strict` fails the run on a query budget that is the subject of the test, not a bug.
+
+The setup is a group and a flag. **A second `phpunit.xml` is not needed** — PHPUnit's
+`--no-extensions` switches every registered extension off for one run, so there is no
+copy of the config to keep in sync.
 
 **1. Put the tests in their own group:**
 
@@ -412,31 +534,27 @@ use PHPUnit\Framework\Attributes\Group;
 final class AuctionBidLoadSmokeTest extends TestCase
 ```
 
-**2. Exclude the group from normal runs**, so the parallel suite does not race the load
-measurements over CPU and database — either in the config:
+**2. Exclude the group from normal runs** — either in the config, as a top-level
+`<groups>` block (an `<exclude>` inside `<testsuite>` is a *path*, not a group):
 
 ```xml
-<testsuite name="default">
-    <directory>tests</directory>
+<groups>
     <exclude>
         <group>smoke</group>
     </exclude>
-</testsuite>
+</groups>
 ```
 
-or on the command line: `vendor/bin/phpunit --exclude-group=smoke`.
+or on the command line: `vendor/bin/phpunit --exclude-group=smoke`. Both leave
+`--group=smoke` working: an explicit group on the command line overrides the config.
 
-**3. Add `phpunit.smoke.xml`** — a copy of the main config with the
-`<bootstrap class="QueryGuard\Extension">` block removed and nothing else changed: same
-testsuites, same bootstrap file, same PHP settings.
-
-**4. Wire both commands into composer:**
+**3. Wire both commands into composer:**
 
 ```json
 {
     "scripts": {
         "test": "phpunit --exclude-group=smoke",
-        "test:smoke": "phpunit --configuration=phpunit.smoke.xml --group=smoke"
+        "test:smoke": "phpunit --no-extensions --group=smoke"
     }
 }
 ```
@@ -448,12 +566,17 @@ test:
 	vendor/bin/phpunit --exclude-group=smoke
 
 test-smoke:
-	vendor/bin/phpunit --configuration=phpunit.smoke.xml --group=smoke
+	vendor/bin/phpunit --no-extensions --group=smoke
 ```
 
-Two habits keep this honest: run the smoke suite sequentially — parallel workers destroy
-the measurements — and port every change of `phpunit.xml` into `phpunit.smoke.xml`; a
-config that has silently drifted is worse than no config at all.
+`--no-extensions` turns off *every* extension registered in `phpunit.xml`, not only this
+one. If the smoke suite depends on another extension, that is the case — and the only
+case — for a second configuration file; then porting every change of `phpunit.xml` into
+it becomes a standing obligation, and a config that has silently drifted is worse than no
+config at all.
+
+One habit keeps the rest honest: run the smoke suite sequentially. Parallel workers race
+each other over CPU and the database, and the measurements are worthless.
 
 ## Requirements
 
@@ -463,10 +586,12 @@ Tier 2: MySQL 8 / MariaDB or PostgreSQL.
 
 ## Development
 
-No local PHP needed — everything runs in containers:
+No local PHP needed — everything runs in containers. `composer update` and not
+`install`: this is a library, so `composer.lock` is deliberately not in the repository
+and CI resolves dependencies afresh on every run.
 
 ```bash
-docker run --rm -v "$PWD":/app -w /app -e COMPOSER_CACHE_DIR=/tmp/composer-cache composer:2 composer install
+docker run --rm -v "$PWD":/app -w /app -e COMPOSER_CACHE_DIR=/tmp/composer-cache composer:2 composer update
 docker run --rm -v "$PWD":/app -w /app php:8.5-cli php vendor/bin/phpunit
 docker run --rm -v "$PWD":/app -w /app php:8.5-cli php vendor/bin/phpstan analyse --memory-limit=1G
 docker run --rm -v "$PWD":/app -w /app php:8.5-cli php vendor/bin/php-cs-fixer fix

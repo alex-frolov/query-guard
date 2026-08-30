@@ -1,5 +1,8 @@
 /vendor/
 /composer.phar
+# a library pins nothing: every consumer resolves against its own constraints, and CI
+# runs `composer update` on purpose — to see the versions a fresh install would pick
+/composer.lock
 
 .phpunit
 /phpunit.xml

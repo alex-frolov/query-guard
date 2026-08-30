@@ -2,7 +2,14 @@ name: CI
 
 on:
   push:
+    branches: ['main']
   pull_request:
+
+# a push to a branch with an open PR used to start the whole matrix twice; and a second
+# push supersedes the first rather than queueing behind it
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   tests:
@@ -19,7 +26,7 @@ jobs:
           - php: '8.2'
             deps: 'lowest'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -27,6 +34,13 @@ jobs:
           php-version: ${{ matrix.php }}
           extensions: pdo_sqlite, mbstring, intl
           coverage: none
+
+      - name: Cache Composer downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/composer/files
+          key: composer-${{ matrix.php }}-${{ matrix.deps }}-${{ hashFiles('composer.json') }}
+          restore-keys: composer-${{ matrix.php }}-${{ matrix.deps }}-
 
       - name: Install dependencies
         run: composer update --prefer-dist --no-interaction --no-progress ${{ matrix.deps == 'lowest' && '--prefer-lowest' || '' }}
@@ -51,7 +65,7 @@ jobs:
             config: 'tools/phpstan/dbal3.neon'
             constraint: '^3.9'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -62,6 +76,13 @@ jobs:
       # The Driver → Connection → Statement wrappers exist in two variants, one per DBAL
       # generation, chosen at runtime. Both have to be analysed — under each version the
       # "other" variant is excluded
+      - name: Cache Composer downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/composer/files
+          key: composer-dbal${{ matrix.dbal }}-${{ hashFiles('composer.json') }}
+          restore-keys: composer-dbal${{ matrix.dbal }}-
+
       - name: Install dependencies
         run: composer update --prefer-dist --no-interaction --no-progress --with "doctrine/dbal:${{ matrix.constraint }}"
 
@@ -72,13 +93,20 @@ jobs:
     name: Code style
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.4'
           coverage: none
+
+      - name: Cache Composer downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/composer/files
+          key: composer-codestyle-${{ hashFiles('composer.json') }}
+          restore-keys: composer-codestyle-
 
       - name: Install dependencies
         run: composer update --prefer-dist --no-interaction --no-progress
@@ -123,7 +151,7 @@ jobs:
           --health-cmd="pg_isready -U stand -d stand"
           --health-interval=5s --health-timeout=5s --health-retries=30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -131,6 +159,13 @@ jobs:
           php-version: '8.4'
           extensions: ${{ matrix.extension }}, pdo_sqlite, mbstring, intl
           coverage: none
+
+      - name: Cache Composer downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/composer/files
+          key: composer-tier2-${{ hashFiles('composer.json') }}
+          restore-keys: composer-tier2-
 
       - name: Install dependencies
         run: composer update --prefer-dist --no-interaction --no-progress

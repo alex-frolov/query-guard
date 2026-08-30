@@ -77,4 +77,32 @@ final class CallsiteResolverTest extends TestCase
             ['file' => '/app/vendor/phpunit/phpunit/src/Framework/TestCase.php', 'line' => 1],
         ]));
     }
+
+    /**
+     * The verdict per file is cached — resolution runs on every recorded query. The
+     * cache must not become a second source of truth: the same resolver has to keep
+     * answering the same way, and a different set of patterns has to answer differently.
+     */
+    public function testCachingTheVerdictDoesNotChangeIt(): void
+    {
+        $stack = [
+            ['file' => '/app/vendor/doctrine/dbal/src/Connection.php', 'line' => 1, 'function' => 'execute'],
+            ['file' => '/app/src/Repository/OrderRepository.php', 'line' => 88, 'function' => 'find'],
+        ];
+
+        $resolver = new CallsiteResolver(['#/vendor/doctrine/#']);
+
+        $first = $resolver->resolve($stack);
+        $second = $resolver->resolve($stack);
+
+        self::assertNotNull($first);
+        self::assertNotNull($second);
+        self::assertSame('/app/src/Repository/OrderRepository.php:88', (string) $first);
+        self::assertSame((string) $first, (string) $second);
+
+        // a resolver with wider patterns has its own cache and its own answer
+        $wider = $resolver->withPatterns(['#/app/src/Repository/#']);
+
+        self::assertNull($wider->resolve($stack));
+    }
 }

@@ -29,6 +29,8 @@ final class Report
 
     private int $suppressed = 0;
 
+    private bool $runnerFailing = false;
+
     /**
      * @param list<Finding> $findings
      */
@@ -98,5 +100,20 @@ final class Report
     public function hasFindings(): bool
     {
         return [] !== $this->findings;
+    }
+
+    /**
+     * PHPUnit has a failure or an error of its own, so it will set a non-zero exit code
+     * without any help. `strict` mode must then leave that code alone — see
+     * `Subscriber\Test\FailedSubscriber`.
+     */
+    public function markRunnerFailing(): void
+    {
+        $this->runnerFailing = true;
+    }
+
+    public function isRunnerFailing(): bool
+    {
+        return $this->runnerFailing;
     }
 }

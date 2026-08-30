@@ -138,9 +138,11 @@ final class DoctrineEnricherTest extends TestCase
     }
 
     /**
-     * No entity references may survive in the trace: it lives until the end of the test.
+     * Nothing from the stack may survive in the trace: it lives until the end of the
+     * test, and 200 frames per query cost ~106 MB per 1000 queries. The callsite is
+     * resolved while recording and is the only thing kept.
      */
-    public function testStackFramesCarryNoObjects(): void
+    public function testTheTraceKeepsNoStackAtAll(): void
     {
         $this->seed();
         $trace = $this->openTrace();
@@ -149,11 +151,21 @@ final class DoctrineEnricherTest extends TestCase
             $customer->orders->count();
         }
 
+        self::assertNotEmpty($trace->events());
+
+        $resolver = CallsiteResolver::default();
+        $resolved = 0;
+
         foreach ($trace->events() as $event) {
-            foreach ($event->stack as $frame) {
-                self::assertArrayNotHasKey('object', $frame);
+            self::assertSame([], $event->stack, $event->sql);
+
+            if (null !== $event->callsite($resolver)) {
+                ++$resolved;
             }
         }
+
+        // the point of resolving early is that the callsite still arrives
+        self::assertGreaterThan(0, $resolved);
     }
 
     private function seed(): void

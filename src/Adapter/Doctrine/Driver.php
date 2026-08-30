@@ -41,9 +41,6 @@ final class Driver extends AbstractDriverMiddleware
     }
 
     /**
-     * @param array<string, mixed> $params
-     */
-    /**
      * The platform is derived from the connection parameters rather than from
      * `Driver::getDatabasePlatform()`, whose signature diverged between DBAL 3 and 4.
      *

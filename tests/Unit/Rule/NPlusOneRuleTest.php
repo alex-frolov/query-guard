@@ -211,6 +211,52 @@ final class NPlusOneRuleTest extends TestCase
         self::assertSame([], $this->findingsFor($trace));
     }
 
+    /**
+     * A regression: a static `IN` filter next to an ordinary lookup used to be read as a
+     * batch fetch, and the rule skipped the query entirely. `WHERE status IN ('new',
+     * 'paid') AND user_id = ?` in a loop is textbook N+1 and the most ordinary shape of
+     * query there is — the false negative was in the flagship rule.
+     */
+    public function testAStaticInFilterDoesNotHideNPlusOne(): void
+    {
+        $trace = $this->trace();
+
+        foreach (range(1, 5) as $id) {
+            $trace->record($this->event(
+                "SELECT * FROM orders WHERE status IN ('new', 'paid') AND user_id = ?",
+                [$id],
+                '/app/src/Report.php',
+                31,
+            ));
+        }
+
+        $findings = $this->findingsFor($trace);
+
+        self::assertCount(1, $findings);
+        self::assertSame('n-plus-one', $findings[0]->rule);
+        self::assertSame(5, $findings[0]->count);
+    }
+
+    /**
+     * `IN (SELECT ...)` is a subquery, not a list of keys — the comma inside it used to
+     * be enough to silence the rule.
+     */
+    public function testASubqueryDoesNotHideNPlusOne(): void
+    {
+        $trace = $this->trace();
+
+        foreach (range(1, 5) as $id) {
+            $trace->record($this->event(
+                'SELECT * FROM orders WHERE tag_id IN (SELECT id, kind FROM tags) AND user_id = ?',
+                [$id],
+                '/app/src/Report.php',
+                44,
+            ));
+        }
+
+        self::assertCount(1, $this->findingsFor($trace));
+    }
+
     public function testWritesAreNotNPlusOne(): void
     {
         $trace = $this->trace();

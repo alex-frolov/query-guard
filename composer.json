@@ -42,6 +42,7 @@
     },
     "suggest": {
         "doctrine/dbal": "Doctrine adapter: query interception via a DBAL middleware (^3.0 || ^4.0)",
+        "doctrine/orm": "Doctrine adapter: without it findings cannot name the lazy-loaded association, and n-plus-one stays a warning instead of an error (^2.20 || ^3.0)",
         "illuminate/database": "Eloquent adapter: query interception via DB::listen"
     },
     "autoload": {

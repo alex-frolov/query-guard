@@ -93,13 +93,29 @@ final class Baseline
         return $this->relative($finding->signature);
     }
 
+    /**
+     * A signature is `rule|file|fingerprint`, so the base path is stripped from the
+     * middle field only — a blanket `str_replace` would also rewrite a fingerprint that
+     * happens to contain the same text.
+     */
     private function relative(string $value): string
     {
         if ('' === $this->basePath) {
             return $value;
         }
 
-        return str_replace(rtrim($this->basePath, '/').'/', '', $value);
+        $prefix = rtrim($this->basePath, '/').'/';
+        $parts = explode('|', $value, 3);
+
+        if (3 !== \count($parts)) {
+            return str_starts_with($value, $prefix) ? substr($value, \strlen($prefix)) : $value;
+        }
+
+        if (str_starts_with($parts[1], $prefix)) {
+            $parts[1] = substr($parts[1], \strlen($prefix));
+        }
+
+        return implode('|', $parts);
     }
 
     public function count(): int

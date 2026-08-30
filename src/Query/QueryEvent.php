@@ -8,9 +8,17 @@ namespace QueryGuard\Query;
  * One database query, as the ORM adapter saw it.
  *
  * The core knows neither Doctrine nor Eloquent: an adapter converts its own event into
- * this shape and hands it to the collector. The stack is stored raw (`debug_backtrace`)
- * rather than resolved — the callsite is only needed for findings, and paying for it on
- * every query would be waste.
+ * this shape and hands it to the collector.
+ *
+ * **The callsite is resolved by the adapter, not stored as a stack.** It used to be the
+ * other way round — the raw `debug_backtrace` was kept and resolved lazily, on the
+ * grounds that only findings need it. That was measured and it does not hold: 200 frames
+ * per query, all of them distinct arrays, cost ~106 MB per 1000 queries, and a trace
+ * lives until the end of its test. Resolving once at record time — where the stack is
+ * already in hand — costs one walk and stores one small object.
+ *
+ * `stack` remains for anyone feeding the collector by hand (see the README): pass a
+ * stack and it is resolved lazily, exactly as before.
  */
 final class QueryEvent
 {
@@ -23,8 +31,9 @@ final class QueryEvent
 
     /**
      * @param array<array-key, mixed>    $params
-     * @param list<array<string, mixed>> $stack       the result of debug_backtrace()
+     * @param list<array<string, mixed>> $stack       the result of debug_backtrace(); leave empty when $callsite is given
      * @param array<string, mixed>       $annotations enrichment from the adapter (entity, association, proxy flag)
+     * @param Callsite|null              $callsite    already resolved by the adapter — then $stack is not needed
      */
     public function __construct(
         public readonly string $sql,
@@ -33,6 +42,7 @@ final class QueryEvent
         public readonly string $connection = 'default',
         public readonly array $stack = [],
         public readonly array $annotations = [],
+        private readonly ?Callsite $callsite = null,
     ) {
     }
 
@@ -43,6 +53,10 @@ final class QueryEvent
 
     public function callsite(CallsiteResolver $resolver): ?Callsite
     {
+        if (null !== $this->callsite) {
+            return $this->callsite;
+        }
+
         $key = spl_object_id($resolver);
 
         if (!\array_key_exists($key, $this->callsites)) {
