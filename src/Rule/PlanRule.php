@@ -71,10 +71,14 @@ abstract class PlanRule implements Rule
 
     /**
      * Whether the table holds enough rows for the plan to mean anything at all.
+     *
+     * The plan is passed along with the node because the size has to be asked of the
+     * database that produced this plan: the same table name in a second connection is a
+     * different table, and on PostgreSQL the answer comes from that connection's catalog.
      */
-    protected function isLargeEnough(PlanNode $node): bool
+    protected function isLargeEnough(PlanNode $node, Plan $plan): bool
     {
-        $rows = $this->plans->rowsFor($node);
+        $rows = $this->plans->rowsFor($node, $plan);
 
         // size unknown — stay quiet, there is nothing to judge by
         return null !== $rows && $rows >= $this->minRows;

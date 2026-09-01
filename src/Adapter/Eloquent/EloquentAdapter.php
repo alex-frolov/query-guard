@@ -7,7 +7,6 @@ namespace QueryGuard\Adapter\Eloquent;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Support\Facades\DB;
-use QueryGuard\Adapter\Explainer;
 use QueryGuard\Adapter\OrmAdapter;
 use QueryGuard\Collector\QueryCollector;
 use QueryGuard\Query\CallsiteResolver;
@@ -135,12 +134,12 @@ final class EloquentAdapter implements OrmAdapter
         return self::$attached;
     }
 
-    public function explainer(): ?Explainer
+    public function explainers(): array
     {
         // tier 2 is not wired for Eloquent yet: `QueryExecuted` gives no access to a
         // connection on which EXPLAIN could run inside the same transaction. That needs
         // its own solution, and there is nothing to quietly substitute.
-        return null;
+        return [];
     }
 
     public function installationHint(): string

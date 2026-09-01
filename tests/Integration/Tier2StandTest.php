@@ -9,11 +9,13 @@ use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\DriverManager;
 use PHPUnit\Framework\Attributes\CoversNothing;
 use PHPUnit\Framework\TestCase;
+use QueryGuard\Adapter\AdapterSet;
 use QueryGuard\Adapter\Doctrine\DoctrineAdapter;
 use QueryGuard\Adapter\Doctrine\Middleware;
 use QueryGuard\Collector\DefaultQueryCollector;
 use QueryGuard\Finding\Finding;
 use QueryGuard\Platform\PlanProvider;
+use QueryGuard\Platform\PlatformDriver;
 use QueryGuard\Platform\PlatformDrivers;
 use QueryGuard\Query\CallsiteResolver;
 use QueryGuard\Query\Trace;
@@ -45,6 +47,8 @@ final class Tier2StandTest extends TestCase
     private Trace $trace;
 
     private PlanProvider $plans;
+
+    private PlatformDriver $driver;
 
     protected function setUp(): void
     {
@@ -78,13 +82,20 @@ final class Tier2StandTest extends TestCase
         // the connection is created lazily — without a query the adapter knows nothing yet
         $this->connection->fetchOne('SELECT 1');
 
-        $explainer = (new DoctrineAdapter())->explainer();
-        self::assertNotNull($explainer, 'the adapter must provide an explainer after the first query');
+        $adapters = new AdapterSet([new DoctrineAdapter()]);
+        $explainers = $adapters->explainers();
 
-        $platform = PlatformDrivers::for($explainer->platform());
-        self::assertNotNull($platform, 'the '.$explainer->platform().' platform is not supported');
+        self::assertNotSame([], $explainers, 'the adapter must provide an explainer after the first query');
 
-        $this->plans = new PlanProvider($explainer, $platform, $this->collector);
+        $explainer = reset($explainers);
+        $driver = PlatformDrivers::for($explainer->platform());
+        self::assertNotNull($driver, 'the '.$explainer->platform().' platform is not supported');
+
+        $this->driver = $driver;
+
+        // built from the adapter set, exactly as the extension does it: the provider
+        // resolves each connection itself when it first sees a query from it
+        $this->plans = new PlanProvider($adapters, $this->collector);
     }
 
     protected function tearDown(): void
@@ -99,7 +110,7 @@ final class Tier2StandTest extends TestCase
 
         $findings = $this->findingsFor(new NoPossibleIndexRule($this->plans, CallsiteResolver::default()));
 
-        if (!$this->plans->driver()->reportsPossibleIndexes()) {
+        if (!$this->driver->reportsPossibleIndexes()) {
             self::assertSame([], $findings, 'PostgreSQL does not report candidate indexes — the rule must stay silent');
 
             return;
@@ -151,7 +162,7 @@ final class Tier2StandTest extends TestCase
         $missingIndex = $this->findingsFor(new NoPossibleIndexRule($this->plans, CallsiteResolver::default()));
         $tableScan = $this->findingsFor(new TableScanRule($this->plans, CallsiteResolver::default()));
 
-        if ($this->plans->driver()->reportsPossibleIndexes()) {
+        if ($this->driver->reportsPossibleIndexes()) {
             self::assertNotSame([], $missingIndex, 'MySQL: child has no candidate indexes');
             self::assertSame([], $tableScan, 'and it is not table-scan — a different diagnosis');
         } else {
@@ -173,7 +184,7 @@ final class Tier2StandTest extends TestCase
 
         $findings = $this->findingsFor(new TemporaryTableRule($this->plans, CallsiteResolver::default()));
 
-        if ($this->plans->driver()->reportsTemporaryTable()) {
+        if ($this->driver->reportsTemporaryTable()) {
             self::assertNotSame([], $findings);
         } else {
             self::assertSame([], $findings, "PostgreSQL's HashAggregate is normal, not a finding");
@@ -220,7 +231,7 @@ final class Tier2StandTest extends TestCase
 
     private function analyzeSql(string $table): string
     {
-        return 'mysql' === $this->plans->driver()->name()
+        return 'mysql' === $this->driver->name()
             ? 'ANALYZE TABLE '.$table
             : 'ANALYZE '.$table;
     }

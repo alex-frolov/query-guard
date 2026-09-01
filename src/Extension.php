@@ -86,7 +86,8 @@ final class Extension implements PHPUnitExtension
             new NoLimitRule($callsiteResolver, $config->largeTables),
             new SelectStarRule($callsiteResolver, $config->selectStar),
             new QueryCountRule($config->maxQueries, $callsiteResolver),
-        ], null === $tier2 ? null : $tier2->rules(...));
+            ...($tier2?->rules() ?? []),
+        ]);
 
         $basePath = getcwd() ?: '';
         $baselinePath = self::absolutePath($config->baselinePath, $basePath);
@@ -111,13 +112,14 @@ final class Extension implements PHPUnitExtension
             new ErroredSubscriber($report),
             new ExecutionFinishedSubscriber(
                 $report,
-                new ConsoleReporter($stream, getcwd() ?: ''),
+                new ConsoleReporter($stream, getcwd() ?: '', $config->failOn),
                 $collector,
                 $adapters,
                 $config->mode,
                 $generated,
                 $baselinePath,
                 $tier2,
+                $config->failOn,
             ),
         );
     }

@@ -33,14 +33,14 @@ final class TableScanRule extends PlanRule
             return null;
         }
 
-        if (!$this->isLargeEnough($node)) {
+        if (!$this->isLargeEnough($node, $plan)) {
             return null;
         }
 
         return sprintf(
             'full scan of "%s" (~%s rows) although indexes exist',
             $node->table,
-            number_format((float) ($this->plans->rowsFor($node) ?? 0), 0, '.', ' '),
+            number_format((float) ($this->plans->rowsFor($node, $plan) ?? 0), 0, '.', ' '),
         );
     }
 }

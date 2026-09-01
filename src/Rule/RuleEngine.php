@@ -9,20 +9,18 @@ use QueryGuard\Query\Trace;
 
 /**
  * Runs the rules over a trace, honouring `#[IgnoreRule]`.
+ *
+ * Every rule is here from the start. There used to be a second, deferred set for tier 2,
+ * which could not be built until a database connection existed — that constraint is gone
+ * now that `PlanProvider` resolves a connection when it first sees a query from it.
  */
 final class RuleEngine
 {
     /**
-     * @param list<Rule>                    $rules
-     * @param (\Closure(): list<Rule>)|null $deferred rules that cannot be built at
-     *                                                start-up. Tier 2 needs a live connection, and none exists when the
-     *                                                extension loads — a Doctrine middleware is installed before the
-     *                                                connection is even created
+     * @param list<Rule> $rules
      */
-    public function __construct(
-        private array $rules,
-        private ?\Closure $deferred = null,
-    ) {
+    public function __construct(private readonly array $rules)
+    {
     }
 
     /**
@@ -30,15 +28,6 @@ final class RuleEngine
      */
     public function run(Trace $trace): array
     {
-        if (null !== $this->deferred) {
-            $late = ($this->deferred)();
-
-            if ([] !== $late) {
-                $this->rules = [...$this->rules, ...$late];
-                $this->deferred = null;
-            }
-        }
-
         $findings = [];
 
         foreach ($this->rules as $rule) {

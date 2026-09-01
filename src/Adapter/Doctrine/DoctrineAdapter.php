@@ -6,7 +6,6 @@ namespace QueryGuard\Adapter\Doctrine;
 
 use Doctrine\DBAL\Driver\Connection as DriverConnection;
 use Doctrine\DBAL\Driver\Middleware as MiddlewareInterface;
-use QueryGuard\Adapter\Explainer;
 use QueryGuard\Adapter\OrmAdapter;
 use QueryGuard\Collector\QueryCollector;
 
@@ -25,12 +24,17 @@ use QueryGuard\Collector\QueryCollector;
  */
 final class DoctrineAdapter implements OrmAdapter
 {
-    /** @var array<string, true> */
-    private static array $connected = [];
-
-    private static ?object $connection = null;
-
-    private static string $platform = 'unknown';
+    /**
+     * Every connection that has been opened, keyed by name.
+     *
+     * A map rather than "the last one": EXPLAIN has to go through the connection that
+     * ran the query. A single static used to hold whichever connected most recently, so
+     * on a project with two databases the plan of one was read against the other — and
+     * parsed with the other's platform driver on top of that.
+     *
+     * @var array<string, array{connection: ?object, platform: string}>
+     */
+    private static array $connections = [];
 
     public static function supports(): bool
     {
@@ -42,16 +46,12 @@ final class DoctrineAdapter implements OrmAdapter
      */
     public static function markConnected(string $connectionName, string $platform = 'unknown', ?object $connection = null): void
     {
-        self::$connected[$connectionName] = true;
-        self::$platform = $platform;
-        self::$connection = $connection;
+        self::$connections[$connectionName] = ['connection' => $connection, 'platform' => $platform];
     }
 
     public static function reset(): void
     {
-        self::$connected = [];
-        self::$connection = null;
-        self::$platform = 'unknown';
+        self::$connections = [];
     }
 
     public function name(): string
@@ -66,16 +66,20 @@ final class DoctrineAdapter implements OrmAdapter
 
     public function isInstalled(): bool
     {
-        return [] !== self::$connected;
+        return [] !== self::$connections;
     }
 
-    public function explainer(): ?Explainer
+    public function explainers(): array
     {
-        if (!self::$connection instanceof DriverConnection) {
-            return null;
+        $explainers = [];
+
+        foreach (self::$connections as $name => $opened) {
+            if ($opened['connection'] instanceof DriverConnection) {
+                $explainers[$name] = new DoctrineExplainer($opened['connection'], $opened['platform']);
+            }
         }
 
-        return new DoctrineExplainer(self::$connection, self::$platform);
+        return $explainers;
     }
 
     public function installationHint(): string

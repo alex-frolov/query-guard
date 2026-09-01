@@ -96,12 +96,45 @@ final class ConsoleReporterTest extends TestCase
         self::assertStringContainsString('strict mode: the run is marked as failed', $this->render($dirty, Mode::Strict));
     }
 
-    private function render(Report $report, Mode $mode = Mode::Report, string $basePath = ''): string
+    /**
+     * The summary must agree with the exit code. Below the `fail-on` threshold the
+     * finding is still printed — but saying "the run is marked as failed" over a run that
+     * then comes back green is worse than saying nothing.
+     */
+    public function testStrictModeSaysSoWhenNothingReachesTheThreshold(): void
+    {
+        $report = new Report();
+        $report->addTrace($this->trace(1, 0), [
+            new Finding('select-star', new TestIdentifier('id', 'T::t'), 'every column', Severity::Info),
+        ]);
+
+        $output = $this->render($report, Mode::Strict, failOn: Severity::Warning);
+
+        self::assertStringContainsString('[info] select-star', $output);
+        self::assertStringContainsString('strict mode: nothing at or above "warning", so the run stays green', $output);
+        self::assertStringNotContainsString('marked as failed', $output);
+    }
+
+    public function testAFindingAtTheThresholdStillFailsTheRun(): void
+    {
+        $report = new Report();
+        $report->addTrace($this->trace(1, 0), [
+            new Finding('select-star', new TestIdentifier('id', 'T::t'), 'every column', Severity::Info),
+            new Finding('duplicate-query', new TestIdentifier('id', 'T::t'), 'five times', Severity::Warning),
+        ]);
+
+        self::assertStringContainsString(
+            'strict mode: the run is marked as failed',
+            $this->render($report, Mode::Strict, failOn: Severity::Warning),
+        );
+    }
+
+    private function render(Report $report, Mode $mode = Mode::Report, string $basePath = '', Severity $failOn = Severity::Warning): string
     {
         $stream = fopen('php://memory', 'w+b');
         self::assertIsResource($stream);
 
-        (new ConsoleReporter($stream, $basePath))->report($report, $mode);
+        (new ConsoleReporter($stream, $basePath, $failOn))->report($report, $mode);
 
         rewind($stream);
         $output = stream_get_contents($stream);

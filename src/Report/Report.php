@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace QueryGuard\Report;
 
 use QueryGuard\Finding\Finding;
+use QueryGuard\Finding\Severity;
 use QueryGuard\Query\Trace;
 
 /**
@@ -100,6 +101,25 @@ final class Report
     public function hasFindings(): bool
     {
         return [] !== $this->findings;
+    }
+
+    /**
+     * Whether anything was found at or above a severity — the `strict` gate.
+     *
+     * Separate from `hasFindings()` on purpose: everything found gets printed, but not
+     * everything found is worth failing a run over. `select-star` is `info` and fires on
+     * every Eloquent query there is; failing a suite on it is how the tool gets removed
+     * the same day it was installed.
+     */
+    public function hasFindingsAtLeast(Severity $threshold): bool
+    {
+        foreach ($this->findings as $finding) {
+            if ($finding->severity->atLeast($threshold)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

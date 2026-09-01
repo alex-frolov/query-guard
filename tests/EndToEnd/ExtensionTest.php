@@ -124,7 +124,13 @@ final class ExtensionTest extends TestCase
         }
     }
 
-    private function temporaryTier1Configuration(string $baseline): string
+    /**
+     * The tier 1 fixture suite, wired by hand so a test can vary one parameter.
+     *
+     * @param string $baseline path to write or read a baseline at; empty means none
+     * @param string $extra    additional `<parameter>` elements, verbatim
+     */
+    private function temporaryTier1Configuration(string $baseline, string $extra = ''): string
     {
         $path = sys_get_temp_dir().'/query-guard-tier1-'.getmypid().'.xml';
 
@@ -140,14 +146,15 @@ final class ExtensionTest extends TestCase
             <parameter name="large-tables" value="invoices, orders"/>
             <parameter name="query-in-loop-threshold" value="5"/>
             <parameter name="duplicate-threshold" value="3"/>
-            <parameter name="baseline" value="%s"/>
+            %s%s
         </bootstrap>
     </extensions>
 </phpunit>',
             \dirname(__DIR__, 2).'/vendor/autoload.php',
             sys_get_temp_dir().'/query-guard-cache-'.getmypid(),
             __DIR__.'/Fixture/Tier1',
-            $baseline,
+            '' === $baseline ? '' : sprintf('<parameter name="baseline" value="%s"/>', $baseline),
+            $extra,
         ));
 
         return $path;
@@ -178,6 +185,84 @@ final class ExtensionTest extends TestCase
 
         self::assertStringContainsString('strict mode: the run is marked as failed', $output, $output);
         self::assertSame(1, $exitCode, $output);
+    }
+
+    /**
+     * `strict` forces its exit code from a shutdown function, which runs after PHPUnit
+     * has already returned its own — and therefore replaces it. When PHPUnit is failing
+     * the run anyway its code is the more specific one, so query-guard has to stand down.
+     *
+     * The fixture errors (PHPUnit answers 2) while also blowing the query budget, which
+     * on its own would make query-guard force a 1. A 1 here would mean an error had been
+     * silently downgraded to a failure.
+     */
+    public function testStrictModeKeepsPHPUnitsOwnExitCodeWhenTheRunIsAlreadyFailing(): void
+    {
+        [$output, $exitCode] = $this->runFixture('phpunit-strict-failing.xml');
+
+        self::assertSame(2, $exitCode, $output);
+
+        // the summary is still printed: standing down is about the exit code, not about
+        // going quiet
+        self::assertStringContainsString('query-count', $output, $output);
+        self::assertStringContainsString('5 queries against a budget of 2', $output, $output);
+    }
+
+    /**
+     * Severity is a scale of certainty, and the gate has to read it. `select-star` is
+     * `info` and fires on every Eloquent query there is; failing a suite on it is how the
+     * tool gets removed the same day it was installed.
+     */
+    public function testStrictModeDoesNotFailOnInfoFindingsByDefault(): void
+    {
+        $configuration = $this->temporaryTier1Configuration(baseline: '', extra: '<parameter name="mode" value="strict"/>');
+
+        try {
+            [$output, $exitCode] = $this->runConfiguration($configuration);
+
+            self::assertStringContainsString('[info] select-star', $output, $output);
+            self::assertStringContainsString('[warning] duplicate-query', $output, $output);
+
+            // a warning is present, so the run does fail — but on the warning, not the info
+            self::assertSame(1, $exitCode, $output);
+        } finally {
+            @unlink($configuration);
+        }
+    }
+
+    public function testFailOnErrorIgnoresWarningsAndInfo(): void
+    {
+        $configuration = $this->temporaryTier1Configuration(
+            baseline: '',
+            extra: '<parameter name="mode" value="strict"/><parameter name="fail-on" value="error"/>',
+        );
+
+        try {
+            [$output, $exitCode] = $this->runConfiguration($configuration);
+
+            // everything is still reported ...
+            self::assertStringContainsString('[warning] duplicate-query', $output, $output);
+            self::assertStringContainsString('[info] select-star', $output, $output);
+
+            // ... but nothing reaches `error`, so the run stays green
+            self::assertStringContainsString('strict mode: nothing at or above "error"', $output, $output);
+            self::assertSame(0, $exitCode, $output);
+        } finally {
+            @unlink($configuration);
+        }
+    }
+
+    public function testUnknownFailOnValueIsReportedRatherThanAppliedSilently(): void
+    {
+        $configuration = $this->temporaryTier1Configuration(baseline: '', extra: '<parameter name="fail-on" value="critical"/>');
+
+        try {
+            [$output] = $this->runConfiguration($configuration);
+
+            self::assertStringContainsString('fail-on="critical" is not a severity', $output, $output);
+        } finally {
+            @unlink($configuration);
+        }
     }
 
     public function testSilentRunSaysThereWasNoAdapter(): void

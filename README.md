@@ -159,6 +159,11 @@ batch fetches (`IN (?, ?, ?)`) — that pattern is the *cure* for N+1, not the d
 Enable with `tier2="true"`. Runs `EXPLAIN` once per distinct query shape, on the same
 connection and inside the same transaction.
 
+**Several connections are handled separately.** Each is explained by itself, with its own
+platform driver — a query that ran on the analytics database is never explained against
+the primary one. A connection on a platform tier 2 does not support is named in the
+summary and skipped; the others keep working.
+
 | Rule | MySQL / MariaDB | PostgreSQL |
 |---|---|---|
 | `no-possible-index` | ✅ | — the platform does not report candidate indexes |
@@ -264,6 +269,7 @@ Both work on the class as well as the method.
 | Parameter | Meaning | Default |
 |---|---|---|
 | `mode` | `report` — print a summary; `strict` — fail the run | `report` |
+| `fail-on` | Lowest severity `strict` fails on: `error`, `warning`, `info` | `warning` |
 | `baseline` | Path to the baseline file | not set |
 | `n-plus-one-threshold` | Repeats before it counts as N+1 | `3` |
 | `duplicate-threshold` | Repeats before it counts as a duplicate | `5` |
@@ -273,6 +279,14 @@ Both work on the class as well as the method.
 | `select-star` | Enable `select-star` | `false` |
 | `tier2` | Enable plan rules | `false` |
 | `min-rows` | Table size below which plan rules do not judge | `1000` |
+
+**`fail-on` reads the severity scale.** `[error]` means the adapter recognised lazy
+loading and named the association; `[warning]` that only the shape heuristic fired;
+`[info]` is a style note. Everything found is always printed — `fail-on` only decides
+what `strict` is willing to fail the run over. The default of `warning` deliberately
+leaves `info` out: the only `info` rule is `select-star`, and `select *` is Eloquent's
+default mode, so failing on it would turn a whole Laravel suite red the moment the rule
+is enabled. Set `fail-on="error"` to fail only on what was proved rather than guessed.
 
 A value that cannot be read — `mode="strickt"`, `max-queries="lots"` — produces a warning
 in the summary naming the parameter, the value and what was used instead. It never falls

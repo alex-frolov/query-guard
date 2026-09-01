@@ -8,6 +8,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use PHPUnit\Runner\Extension\ParameterCollection;
 use QueryGuard\ExtensionConfiguration;
+use QueryGuard\Finding\Severity;
 use QueryGuard\Mode;
 
 /**
@@ -109,6 +110,32 @@ final class ExtensionConfigurationTest extends TestCase
     public function testAnExplicitOffIsNotAWarning(): void
     {
         self::assertSame([], self::configure(['select-star' => 'false', 'tier2' => '0'])->warnings);
+    }
+
+    /**
+     * The default leaves `info` out. The only `info` rule is `select-star`, and
+     * `select *` is Eloquent's default mode — failing on it would turn a whole Laravel
+     * suite red the moment someone enables the rule.
+     */
+    public function testFailOnDefaultsToWarning(): void
+    {
+        self::assertSame(Severity::Warning, self::configure([])->failOn);
+    }
+
+    public function testFailOnIsRead(): void
+    {
+        self::assertSame(Severity::Error, self::configure(['fail-on' => 'error'])->failOn);
+        self::assertSame(Severity::Info, self::configure(['fail-on' => 'INFO'])->failOn);
+        self::assertSame(Severity::Warning, self::configure(['fail-on' => ' warning '])->failOn);
+    }
+
+    public function testAnUnknownFailOnIsWarnedAboutRatherThanAppliedSilently(): void
+    {
+        $config = self::configure(['fail-on' => 'critical']);
+
+        self::assertSame(Severity::Warning, $config->failOn);
+        self::assertCount(1, $config->warnings);
+        self::assertStringContainsString('fail-on="critical" is not a severity', $config->warnings[0]);
     }
 
     public function testWarningsAccumulate(): void

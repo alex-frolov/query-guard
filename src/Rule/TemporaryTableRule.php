@@ -29,11 +29,11 @@ final class TemporaryTableRule extends PlanRule
 
     protected function inspect(PlanNode $node, Plan $plan): ?string
     {
-        if (!$this->plans->driver()->reportsTemporaryTable()) {
+        if (true !== $this->plans->driverFor($plan)?->reportsTemporaryTable()) {
             return null;
         }
 
-        if (!$node->temporaryTable || !$this->isLargeEnough($node)) {
+        if (!$node->temporaryTable || !$this->isLargeEnough($node, $plan)) {
             return null;
         }
 

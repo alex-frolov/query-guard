@@ -18,10 +18,13 @@ final class ConsoleReporter implements Reporter
 {
     /**
      * @param resource $stream
+     * @param Severity $failOn the `strict` threshold, so the summary can say whether the
+     *                         run is actually going to fail rather than assuming it will
      */
     public function __construct(
         private $stream,
         private readonly string $basePath = '',
+        private readonly Severity $failOn = Severity::Warning,
     ) {
     }
 
@@ -67,7 +70,12 @@ final class ConsoleReporter implements Reporter
 
             if (Mode::Strict === $mode) {
                 $lines[] = '';
-                $lines[] = '  strict mode: the run is marked as failed';
+                $lines[] = $report->hasFindingsAtLeast($this->failOn)
+                    ? '  strict mode: the run is marked as failed'
+                    : sprintf(
+                        '  strict mode: nothing at or above "%s", so the run stays green',
+                        $this->failOn->value,
+                    );
             }
         }
 
@@ -89,11 +97,9 @@ final class ConsoleReporter implements Reporter
      */
     private static function sorted(array $findings): array
     {
-        $weight = [Severity::Error->value => 0, Severity::Warning->value => 1, Severity::Info->value => 2];
-
         usort(
             $findings,
-            static fn (Finding $a, Finding $b): int => $weight[$a->severity->value] <=> $weight[$b->severity->value],
+            static fn (Finding $a, Finding $b): int => $b->severity->rank() <=> $a->severity->rank(),
         );
 
         return $findings;

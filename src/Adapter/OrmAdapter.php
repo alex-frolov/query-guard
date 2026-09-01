@@ -37,9 +37,20 @@ interface OrmAdapter
     public function isInstalled(): bool;
 
     /**
-     * Where to run EXPLAIN. Tier 2 only; `null` is a perfectly normal answer.
+     * Where to run EXPLAIN, one entry per connection. Tier 2 only; an empty map is a
+     * perfectly normal answer.
+     *
+     * Keyed by connection name — the same name a `QueryEvent` carries. EXPLAIN has to go
+     * through the connection the query itself used, so a single "the" explainer cannot
+     * be right on a project with more than one: it would explain a query against a
+     * database that never ran it, and parse the plan with the wrong platform's driver.
+     *
+     * The map is rebuilt on every call rather than cached. Connections open lazily, so
+     * one that does not exist during the first test may well exist during the tenth.
+     *
+     * @return array<string, Explainer>
      */
-    public function explainer(): ?Explainer;
+    public function explainers(): array;
 
     /**
      * What to do when interception failed. Printed in the summary, so the hint has to

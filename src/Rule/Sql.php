@@ -22,6 +22,25 @@ final class Sql
      */
     private const KEY_LIST = '/\bIN\s*\(\s*(?:\?|:\w+|\$\d+|-?\d+)(?:\s*,\s*(?:\?|:\w+|\$\d+|-?\d+))+\s*\)/i';
 
+    /**
+     * A string literal, a block comment or a line comment — whichever opens first.
+     *
+     * One alternation rather than three passes, and that is a correctness requirement
+     * rather than a tidying: see `stripped()`.
+     */
+    private const LITERAL_OR_COMMENT = "#'(?:[^']|'')*'|/\*.*?\*/|--[^\n]*#s";
+
+    /**
+     * How many distinct queries to remember before starting the cache over.
+     *
+     * A bound is needed because the key is the raw SQL: a suite building endless
+     * distinct statements would otherwise grow this for the whole run.
+     */
+    private const CACHE_LIMIT = 2000;
+
+    /** @var array<string, string> */
+    private static array $stripped = [];
+
     public static function shorten(string $sql, int $limit = 90): string
     {
         $normalized = (string) preg_replace('/\s+/', ' ', trim($sql));
@@ -79,14 +98,32 @@ final class Sql
      * findable for `touchesTable()`. `#` is not treated as a comment either: it is a
      * MySQL-only spelling that ORMs do not emit, while PostgreSQL uses it inside
      * operators.
+     *
+     * **One pass, not three.** Stripping comments first and literals afterwards looks
+     * equivalent and is not: `WHERE body = 'a -- b'` loses its closing quote to the
+     * line-comment pass, and nothing after it is recognisable any more. That is not a
+     * cosmetic error — `isBatchFetch()` then answers "no" for a real `IN (?, ?)` list,
+     * and a false negative there is a **false positive in the flagship rule**. A single
+     * alternation scans left to right, so whichever construct opens first wins, which is
+     * how the database reads it too.
+     *
+     * The result is memoised: the helpers above are called once per rule per query, and
+     * `touchesTable()` once per configured table on top of that.
      */
     private static function stripped(string $sql): string
     {
-        // ORMs put their own hints in comments, and a keyword inside one says nothing
-        // about what the database is going to do
-        $sql = (string) preg_replace('#/\*.*?\*/#s', ' ', $sql);
-        $sql = (string) preg_replace('/--[^\n]*/', ' ', $sql);
+        if (\array_key_exists($sql, self::$stripped)) {
+            return self::$stripped[$sql];
+        }
 
-        return (string) preg_replace("/'(?:[^']|'')*'/", "''", $sql);
+        if (\count(self::$stripped) >= self::CACHE_LIMIT) {
+            self::$stripped = [];
+        }
+
+        return self::$stripped[$sql] = (string) preg_replace_callback(
+            self::LITERAL_OR_COMMENT,
+            static fn (array $match): string => "'" === $match[0][0] ? "''" : ' ',
+            $sql,
+        );
     }
 }

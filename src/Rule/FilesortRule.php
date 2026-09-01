@@ -28,7 +28,7 @@ final class FilesortRule extends PlanRule
 
     protected function inspect(PlanNode $node, Plan $plan): ?string
     {
-        if (!$node->filesort || !$this->isLargeEnough($node)) {
+        if (!$node->filesort || !$this->isLargeEnough($node, $plan)) {
             return null;
         }
 

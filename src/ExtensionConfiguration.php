@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace QueryGuard;
 
 use PHPUnit\Runner\Extension\ParameterCollection;
+use QueryGuard\Finding\Severity;
 use QueryGuard\Rule\DuplicateQueryRule;
 use QueryGuard\Rule\NPlusOneRule;
 use QueryGuard\Rule\PlanRule;
@@ -15,6 +16,11 @@ use QueryGuard\Rule\QueryInLoopRule;
  *
  * Rules liable to be noisy on any project (`query-count`, `no-limit`, `select-star`)
  * stay silent by default: switching them on is the project owner's deliberate choice.
+ *
+ * `fail-on` decides what `mode="strict"` is willing to fail a run over, and defaults to
+ * `warning` — so an `info` finding is printed but costs nothing. Severity is a scale of
+ * certainty, and the gate has to read it; otherwise the summary says "this one is only a
+ * guess" and the exit code disagrees.
  *
  * Tier 2 (`tier2`) is off for the same reason, only a stronger one: it needs a database
  * with real volume and statistics. On a three-row test database the plan rules are not
@@ -49,6 +55,7 @@ final readonly class ExtensionConfiguration
         public bool $generateBaseline = false,
         public bool $tier2 = false,
         public int $minRows = PlanRule::DEFAULT_MIN_ROWS,
+        public Severity $failOn = Severity::Warning,
         public array $warnings = [],
     ) {
     }
@@ -69,6 +76,7 @@ final readonly class ExtensionConfiguration
             generateBaseline: self::generateBaselineRequested(),
             tier2: self::bool($parameters, 'tier2', $warnings),
             minRows: self::positiveInt($parameters, 'min-rows', PlanRule::DEFAULT_MIN_ROWS, 1, $warnings) ?? PlanRule::DEFAULT_MIN_ROWS,
+            failOn: self::failOn($parameters, $warnings),
             warnings: $warnings,
         );
     }
@@ -111,6 +119,38 @@ final readonly class ExtensionConfiguration
         }
 
         return $mode;
+    }
+
+    /**
+     * Which severities `strict` mode is willing to fail a run over.
+     *
+     * The default is `warning`, which leaves `info` out. That is not timidity: the only
+     * `info` rule is `select-star`, and `select *` is Eloquent's default mode — failing
+     * on it would turn a whole Laravel suite red the moment someone enables the rule.
+     * Set `fail-on="info"` to hold the suite to everything, `fail-on="error"` to fail
+     * only on what the adapter proved rather than guessed.
+     *
+     * @param list<string> $warnings
+     */
+    private static function failOn(ParameterCollection $parameters, array &$warnings): Severity
+    {
+        if (!$parameters->has('fail-on')) {
+            return Severity::Warning;
+        }
+
+        $raw = trim($parameters->get('fail-on'));
+        $severity = Severity::tryFrom(strtolower($raw));
+
+        if (null === $severity) {
+            $warnings[] = sprintf(
+                'fail-on="%s" is not a severity — the default "warning" was used instead. Expected: error, warning, info.',
+                $raw,
+            );
+
+            return Severity::Warning;
+        }
+
+        return $severity;
     }
 
     /**

@@ -34,6 +34,17 @@ final class SqlTest extends TestCase
         yield 'a list inside a comment' => ['SELECT * FROM t WHERE id = ? /* IN (a, b) */', false];
         yield 'a single key' => ['SELECT * FROM t WHERE id IN (?)', false];
         yield 'no list at all' => ['SELECT * FROM t WHERE id = ?', false];
+
+        // a literal is not a comment. Stripping comments before literals used to let the
+        // `--` inside this string eat the closing quote, and everything after it stopped
+        // being recognisable — the batch fetch went unseen and `n-plus-one` fired on the
+        // very query that cures N+1
+        yield 'a line-comment marker inside a literal' => ["SELECT * FROM notes WHERE body = 'a -- b' AND id IN (1, 2, 3)", true];
+        yield 'a block-comment marker inside a literal' => ["SELECT * FROM t WHERE pattern = '/*' AND id IN (?, ?)", true];
+        yield 'an escaped quote around a marker' => ["SELECT * FROM t WHERE q = 'it''s -- fine' AND id IN (?, ?)", true];
+
+        // and the converse still holds: a real comment hides a real list
+        yield 'a list inside a line comment' => ["SELECT * FROM t WHERE id = ?\n-- id IN (1, 2, 3)", false];
     }
 
     #[DataProvider('batchFetchProvider')]
@@ -48,6 +59,9 @@ final class SqlTest extends TestCase
         self::assertFalse(Sql::hasLimit("SELECT * FROM users WHERE name = 'LIMIT'"));
         self::assertFalse(Sql::hasLimit('SELECT * FROM users -- LIMIT 10'));
         self::assertFalse(Sql::hasLimit('SELECT * FROM users /* LIMIT 10 */'));
+
+        // the literal holds a `--`, which must not swallow the rest of the statement
+        self::assertTrue(Sql::hasLimit("SELECT * FROM notes WHERE body = 'a -- b' LIMIT 10"));
     }
 
     public function testTableIsNotFoundInsideALiteral(): void

@@ -54,6 +54,10 @@ final class DoctrineAdapterTest extends TestCase
     {
         QueryGuard::deactivate();
         DoctrineAdapter::reset();
+
+        foreach (['primary', 'analytics'] as $name) {
+            @unlink($this->file($name));
+        }
     }
 
     public function testPreparedStatementIsRecordedWithSqlBindingsAndDuration(): void
@@ -159,14 +163,78 @@ final class DoctrineAdapterTest extends TestCase
         );
     }
 
+    /**
+     * Every connection is registered under its own name, and each keeps its own platform.
+     *
+     * A single static used to hold whichever connected last, so on a project with two
+     * databases tier 2 explained one query against the other — and parsed the plan with
+     * the other's platform driver. Both connections have to survive, in full.
+     */
+    public function testEveryConnectionIsRegisteredUnderItsOwnName(): void
+    {
+        $primary = $this->connectTo(['driver' => 'pdo_sqlite', 'path' => $this->file('primary')]);
+        $analytics = $this->connectTo(['driver' => 'pdo_sqlite', 'path' => $this->file('analytics')]);
+
+        // DBAL connects lazily: until a query runs there is nothing to register
+        $primary->fetchOne('SELECT 1');
+        $analytics->fetchOne('SELECT 1');
+
+        $explainers = (new DoctrineAdapter())->explainers();
+
+        self::assertSame(
+            [$this->file('primary'), $this->file('analytics')],
+            array_keys($explainers),
+        );
+
+        foreach ($explainers as $explainer) {
+            self::assertSame('sqlite', $explainer->platform());
+        }
+    }
+
+    /**
+     * The connection a query came from is recorded on the event, which is what lets tier 2
+     * send its EXPLAIN back to the right database.
+     */
+    public function testAQueryCarriesTheConnectionItRanOn(): void
+    {
+        $primary = $this->connectTo(['driver' => 'pdo_sqlite', 'path' => $this->file('primary')]);
+        $analytics = $this->connectTo(['driver' => 'pdo_sqlite', 'path' => $this->file('analytics')]);
+
+        $primary->executeStatement('CREATE TABLE t (id INTEGER PRIMARY KEY)');
+        $analytics->executeStatement('CREATE TABLE t (id INTEGER PRIMARY KEY)');
+
+        $this->collector->beginTrace(new TestIdentifier('id', 'reset'), TestOptions::none());
+
+        $primary->fetchAllAssociative('SELECT id FROM t');
+        $analytics->fetchAllAssociative('SELECT id FROM t');
+
+        $trace = $this->collector->endTrace();
+        self::assertNotNull($trace);
+
+        self::assertSame(
+            [$this->file('primary'), $this->file('analytics')],
+            array_map(static fn ($event): string => $event->connection, $trace->events()),
+        );
+    }
+
+    private function file(string $name): string
+    {
+        return sys_get_temp_dir().'/query-guard-'.$name.'-'.getmypid().'.sqlite';
+    }
+
     private function connect(): Connection
+    {
+        return $this->connectTo(['driver' => 'pdo_sqlite', 'memory' => true]);
+    }
+
+    /**
+     * @param array<string, mixed> $params
+     */
+    private function connectTo(array $params): Connection
     {
         $configuration = new Configuration();
         $configuration->setMiddlewares([new Middleware()]);
 
-        return DriverManager::getConnection(
-            ['driver' => 'pdo_sqlite', 'memory' => true],
-            $configuration,
-        );
+        return DriverManager::getConnection($params, $configuration);
     }
 }

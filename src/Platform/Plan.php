@@ -12,17 +12,27 @@ final readonly class Plan
 {
     /**
      * @param list<PlanNode> $nodes
+     * @param string         $connection which connection answered. A rule needs it to ask
+     *                                   further questions — table sizes, platform
+     *                                   capabilities — of the same database that produced
+     *                                   this plan rather than of whichever connected last
      */
     public function __construct(
         public string $platform,
         public array $nodes,
         public ?float $cost = null,
+        public string $connection = '',
     ) {
     }
 
     public static function empty(string $platform): self
     {
         return new self($platform, []);
+    }
+
+    public function onConnection(string $connection): self
+    {
+        return new self($this->platform, $this->nodes, $this->cost, $connection);
     }
 
     public function isEmpty(): bool

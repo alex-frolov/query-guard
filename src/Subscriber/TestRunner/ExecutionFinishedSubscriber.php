@@ -9,6 +9,7 @@ use PHPUnit\Event\TestRunner\ExecutionFinishedSubscriber as PHPUnitExecutionFini
 use QueryGuard\Adapter\AdapterSet;
 use QueryGuard\Baseline\Baseline;
 use QueryGuard\Collector\DefaultQueryCollector;
+use QueryGuard\Finding\Severity;
 use QueryGuard\Mode;
 use QueryGuard\Report\Report;
 use QueryGuard\Report\Reporter;
@@ -28,6 +29,7 @@ final class ExecutionFinishedSubscriber implements PHPUnitExecutionFinishedSubsc
         private readonly ?Baseline $generated = null,
         private readonly string $baselinePath = '',
         private readonly ?Tier2Factory $tier2 = null,
+        private readonly Severity $failOn = Severity::Warning,
     ) {
     }
 
@@ -94,7 +96,9 @@ final class ExecutionFinishedSubscriber implements PHPUnitExecutionFinishedSubsc
 
         $this->reporter->report($this->report, $this->mode);
 
-        if (null === $this->generated && Mode::Strict === $this->mode && $this->report->hasFindings()) {
+        // everything found is printed; only what reaches the `fail-on` severity fails the
+        // run. `select-star` is `info` and fires on every Eloquent query there is
+        if (null === $this->generated && Mode::Strict === $this->mode && $this->report->hasFindingsAtLeast($this->failOn)) {
             // PHPUnit's event system lets an extension neither fail a test nor change
             // the exit code. The only point that works is shutdown: it runs after
             // PHPUnit has already returned its own code — and therefore replaces it.

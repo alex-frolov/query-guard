@@ -24,8 +24,20 @@ final class QueryEvent
 {
     private ?Fingerprint $fingerprint = null;
 
-    /** @var array<int, Callsite|null> memoised per resolver: walking the stack costs, and it is asked for more than once */
-    private array $callsites = [];
+    /**
+     * Memoised per resolver: walking the stack costs, and it is asked for more than once.
+     *
+     * Keyed by the resolver object itself rather than by `spl_object_id()`. PHP hands a
+     * freed object's id to the next one allocated, so a short-lived resolver — and
+     * `CallsiteResolver::withPatterns()` exists to make those — would inherit the
+     * verdict of an unrelated one and report a callsite it had been told to skip.
+     *
+     * Built lazily: a trace holds every event of a test alive, and in the common path
+     * the adapter has already resolved the callsite, so the map is never needed at all.
+     *
+     * @var \WeakMap<CallsiteResolver, array{Callsite|null}>|null
+     */
+    private ?\WeakMap $callsites = null;
 
     private ?string $shape = null;
 
@@ -57,13 +69,15 @@ final class QueryEvent
             return $this->callsite;
         }
 
-        $key = spl_object_id($resolver);
+        $this->callsites ??= new \WeakMap();
 
-        if (!\array_key_exists($key, $this->callsites)) {
-            $this->callsites[$key] = $resolver->resolve($this->stack);
+        if (!$this->callsites->offsetExists($resolver)) {
+            // wrapped in an array so that a resolved "no callsite" is remembered as an
+            // answer rather than looking like a missing entry on the next call
+            $this->callsites->offsetSet($resolver, [$resolver->resolve($this->stack)]);
         }
 
-        return $this->callsites[$key];
+        return $this->callsites->offsetGet($resolver)[0];
     }
 
     /**
@@ -74,10 +88,25 @@ final class QueryEvent
      * everything matches. Missing that distinction is precisely where the closest
      * competitor fails — it treats a match of SQL AND bound values as a duplicate,
      * and therefore never sees N+1.
+     *
+     * `serialize()` throws on a value it cannot represent — a closure, most plausibly
+     * out of an Eloquent binding. This runs inside `Test\Finished`, so an exception here
+     * would escape into PHPUnit's event dispatcher: a tool that watches for problems
+     * must not be able to break the suite it is watching. The fallback separates
+     * queries by parameter count only, which under-reports duplicates rather than
+     * inventing them.
      */
     public function shape(): string
     {
-        return $this->shape ??= $this->sql.'|'.serialize($this->params);
+        if (null !== $this->shape) {
+            return $this->shape;
+        }
+
+        try {
+            return $this->shape = $this->sql.'|'.serialize($this->params);
+        } catch (\Throwable) {
+            return $this->shape = $this->sql.'|?'.\count($this->params);
+        }
     }
 
     /**
@@ -87,10 +116,15 @@ final class QueryEvent
      * and it is cured by eager loading. Repeated INSERTs from a factory are a different
      * phenomenon with a different cure (batch insert); lumping them together guarantees
      * false positives on fixtures.
+     *
+     * Both comment spellings are skipped, block and line alike. A statement introduced
+     * by a `--` line — sqlcommenter-style tracing emits them — read as a write, and
+     * a read misfiled that way disappears silently: out of `n-plus-one`, out of
+     * `duplicate-query`, and out of tier 2, which never even asks for its plan.
      */
     public function isSelect(): bool
     {
-        return 1 === preg_match('/^\s*(?:\/\*.*?\*\/\s*)*(SELECT|WITH)\b/i', $this->sql);
+        return 1 === preg_match('#^\s*(?:(?:/\*.*?\*/|--[^\n]*\n)\s*)*(SELECT|WITH)\b#is', $this->sql);
     }
 
     public function annotation(string $name): mixed

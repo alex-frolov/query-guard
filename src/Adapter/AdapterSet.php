@@ -45,19 +45,25 @@ final class AdapterSet
     }
 
     /**
-     * The first adapter able to run EXPLAIN. Needed by tier 2.
+     * Every connection that can be EXPLAINed, keyed by connection name. Needed by tier 2.
+     *
+     * On a name collision the first adapter wins. Two ORMs claiming the same connection
+     * name is already a project-level ambiguity, and picking the later one would only
+     * make which answer you get depend on the order of `detect()`.
+     *
+     * @return array<string, Explainer>
      */
-    public function explainer(): ?Explainer
+    public function explainers(): array
     {
-        foreach ($this->adapters as $adapter) {
-            $explainer = $adapter->explainer();
+        $explainers = [];
 
-            if (null !== $explainer) {
-                return $explainer;
+        foreach ($this->adapters as $adapter) {
+            foreach ($adapter->explainers() as $name => $explainer) {
+                $explainers[$name] ??= $explainer;
             }
         }
 
-        return null;
+        return $explainers;
     }
 
     public function isEmpty(): bool
