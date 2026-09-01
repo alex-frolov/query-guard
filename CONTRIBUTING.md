@@ -63,8 +63,9 @@ recent tag and prints what a release from this branch would break. While the pac
 `PlanProvider` have already changed on purpose. The job exists so a break is visible in
 the pull request that causes it and reaches the CHANGELOG, rather than reaching a user's
 upgrade. **A reported break is not a blocker; a reported break missing from the CHANGELOG
-is.** At 1.0 the `continue-on-error` line in the workflow comes out and breaks start
-failing the build.
+is.** The findings are rendered into the run summary, grouped as added / changed /
+removed — read them there rather than in the log. At 1.0, drop the `3` from the exit-code
+condition in the workflow and breaks start failing the build.
 
 Two details of how it is wired, both learned the hard way:
 
@@ -78,6 +79,12 @@ Two details of how it is wired, both learned the hard way:
   were noise. It also runs as root over a checkout owned by the runner, which git refuses
   to read at all. The global install carries a current parser and runs as the right user;
   the same comparison then reports 14 lines, 12 of them real.
+- The step reads Roave's exit code itself instead of using `continue-on-error`. Roave
+  answers "I found breaks" with `3`, which before 1.0 is information rather than failure,
+  so the step treats `3` as success and anything else as the tool falling over. The
+  one-line `continue-on-error` version was tried first and is worse: it paints the check
+  red on every run that finds anything, and a check that is always red is a check nobody
+  reads by the time 1.0 makes it mean something.
 
 `--install-development-dependencies` is needed because the ORMs are dev dependencies
 here: without them the adapters' parent classes cannot be resolved, and the tool skips

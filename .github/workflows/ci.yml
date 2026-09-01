@@ -164,12 +164,6 @@ jobs:
   backward-compatibility:
     name: Backward compatibility
     runs-on: ubuntu-latest
-    # Informational until 1.0, and deliberately so: 0.x is where the seams are still
-    # being cut, and this package has already changed `OrmAdapter` and `PlanProvider` on
-    # purpose. What the job is for right now is making a break visible in the pull request
-    # that causes it, so it reaches the CHANGELOG instead of a user's upgrade. Drop this
-    # line at 1.0 and the breaks start failing the build, which is the point of 1.0.
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v5
         with:
@@ -198,11 +192,47 @@ jobs:
       - name: Install Roave BC Check
         run: composer global require --no-interaction --no-progress roave/backward-compatibility-check
 
+      # Roave answers "I found breaks" with exit code 3. Before 1.0 that is information,
+      # not a failure, so the step tells 3 apart from the tool actually falling over and
+      # reports the findings in the run summary.
+      #
+      # `continue-on-error: true` would be the one-line version and was what this job used
+      # first. It is worse: it paints the check red on every run that finds anything, and
+      # a check that is always red is a check nobody reads by the time 1.0 makes it mean
+      # something. To make breaks blocking at 1.0, drop the `3` from the condition below.
+      #
       # `--install-development-dependencies` because the ORMs are dev dependencies here:
       # without them the adapters' parent classes cannot be resolved and the comparison
-      # skips them rather than judging them.
+      # skips those classes rather than judging them.
       - name: Roave BC check
-        run: $(composer global config bin-dir --absolute)/roave-backward-compatibility-check --install-development-dependencies
+        run: |
+          bin="$(composer global config bin-dir --absolute)"
+          tag="$(git describe --tags --abbrev=0)"
+
+          set +e
+          "$bin/roave-backward-compatibility-check" \
+            --install-development-dependencies --format=markdown > bc.md
+          status=$?
+          set -e
+
+          if [ "$status" -ne 0 ] && [ "$status" -ne 3 ]; then
+            echo "roave-backward-compatibility-check itself failed with exit $status" >&2
+            exit "$status"
+          fi
+
+          # the report starts at its first heading; composer's own chatter precedes it
+          {
+            echo "## Backward compatibility since ${tag}"
+            echo
+            if [ "$status" -eq 0 ]; then
+              echo "Nothing on this branch breaks the released API."
+            else
+              echo "This branch breaks the API released in \`${tag}\`. Before 1.0 that is allowed —"
+              echo "but every line below has to appear in \`CHANGELOG.md\` before this is merged."
+              echo
+              sed -n '/^# /,$p' bc.md
+            fi
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
   tier2:
     name: Tier 2 / ${{ matrix.platform }}
