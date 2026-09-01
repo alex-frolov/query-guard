@@ -27,10 +27,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   is an error while coverage is being collected. The suite already followed this; now it
   cannot quietly stop.
 - `composer coverage`, `composer analyse-tests` and `composer style` scripts.
-- A backward-compatibility job: Roave BC Check against the most recent tag, run as a
-  container so the tool's dependency tree stays out of `composer.json`. Informational
-  while the package is 0.x — a break is meant to be visible in the pull request that
-  causes it and to land in this file, not to be blocked. It becomes blocking at 1.0.
+- A backward-compatibility job: Roave BC Check against the most recent tag, installed
+  with `composer global require` so the tool's dependency tree stays out of
+  `composer.json`. Informational while the package is 0.x — a break is meant to be
+  visible in the pull request that causes it and to land in this file, not to be blocked.
+  It becomes blocking at 1.0.
 - Dependabot for GitHub Actions and Composer. The two are watched for different reasons:
   actions are pinned by major, so a bad release inside that major reaches CI on its own,
   while Composer — a library with no lock file — only raises a pull request when a release

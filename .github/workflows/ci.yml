@@ -177,11 +177,32 @@ jobs:
           # history behind them — the default shallow checkout has neither
           fetch-depth: 0
 
-      # Run as a container rather than `composer require --dev`: Roave pulls a large
-      # dependency tree of its own, and installing it beside phpstan and php-cs-fixer is
-      # how a dev-dependency conflict gets introduced into a package that has none.
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          # the tool's own requirements, not this package's
+          extensions: bcmath, intl
+          coverage: none
+
+      # Installed globally rather than added to composer.json: Roave brings a large
+      # dependency tree of its own, and putting it beside phpstan and php-cs-fixer is how
+      # this package would acquire the dependency conflict it currently does not have.
+      #
+      # Not the `docker://nyholm/roave-bc-check-ga` action, which is the obvious way to
+      # do this and was tried first. That image pins nikic/php-parser 4, which cannot
+      # read PHP 8.4 syntax, so every dependency using it turned into a parse warning:
+      # 109 reported "changes" of which 98 were noise. It also runs as root over a
+      # checkout owned by the runner, which git refuses to read at all. A global install
+      # runs as the user that owns the checkout and carries a current parser.
+      - name: Install Roave BC Check
+        run: composer global require --no-interaction --no-progress roave/backward-compatibility-check
+
+      # `--install-development-dependencies` because the ORMs are dev dependencies here:
+      # without them the adapters' parent classes cannot be resolved and the comparison
+      # skips them rather than judging them.
       - name: Roave BC check
-        uses: docker://nyholm/roave-bc-check-ga
+        run: $(composer global config bin-dir --absolute)/roave-backward-compatibility-check --install-development-dependencies
 
   tier2:
     name: Tier 2 / ${{ matrix.platform }}

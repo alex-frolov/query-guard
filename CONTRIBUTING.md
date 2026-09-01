@@ -22,11 +22,22 @@ CI runs it across PHP 8.2–8.5, both Doctrine DBAL generations and, for tier 2,
 MySQL and PostgreSQL. It also measures coverage on one job — `composer coverage`
 locally, which needs pcov or Xdebug installed.
 
-**Coverage is a signal, not a gate, and the number reads low on purpose.** The
-end-to-end tests launch PHPUnit in a child process, and a child process contributes
-nothing to the parent's coverage — so `Extension` and the subscribers, which those tests
-exercise more thoroughly than anything else, show up as barely covered. Read the figure
-for `src/Rule` and `src/Platform`; ignore it for the wiring.
+**Coverage is a signal, not a gate, and the headline number is misleading on purpose.**
+The end-to-end tests launch PHPUnit in a child process, and a child process contributes
+nothing to the parent's coverage. So `Extension` and every subscriber — the code those
+18 tests exercise more thoroughly than anything else in the package — measure at exactly
+**0% (0/145 statements)**. The overall figure is around 58% because of them; the part
+worth reading is around 71%:
+
+| | Lines |
+|---|---|
+| `src/Query` | ~91% |
+| `src/Rule` | ~79% |
+| `src/Platform` | ~42% — the tier 2 stand tests skip without a live database |
+| wiring (`Extension`, `Subscriber/*`, the service provider) | 0%, and will stay there |
+
+Never "fix" the wiring figure by moving those tests in-process: running the extension
+inside the runner that is running it is not the thing under test.
 
 `composer update` and not `install`: this is a library, `composer.lock` is deliberately
 not in the repository, and CI resolves dependencies afresh on every run.
@@ -55,9 +66,22 @@ upgrade. **A reported break is not a blocker; a reported break missing from the 
 is.** At 1.0 the `continue-on-error` line in the workflow comes out and breaks start
 failing the build.
 
-It runs as a container rather than a dev dependency — Roave brings a large tree of its
-own, and installing it beside PHPStan and php-cs-fixer is how this package would acquire
-the dependency conflict it currently does not have.
+Two details of how it is wired, both learned the hard way:
+
+- It is installed with `composer global require`, not added to `composer.json`. Roave
+  brings a large dependency tree of its own, and putting it beside PHPStan and
+  php-cs-fixer is how this package would acquire the dependency conflict it currently
+  does not have.
+- It is **not** the `docker://nyholm/roave-bc-check-ga` action, which is the obvious way
+  to run it. That image pins `nikic/php-parser` 4, which cannot read PHP 8.4 syntax, so
+  every dependency using it becomes a parse warning — 109 reported "changes" of which 98
+  were noise. It also runs as root over a checkout owned by the runner, which git refuses
+  to read at all. The global install carries a current parser and runs as the right user;
+  the same comparison then reports 14 lines, 12 of them real.
+
+`--install-development-dependencies` is needed because the ORMs are dev dependencies
+here: without them the adapters' parent classes cannot be resolved, and the tool skips
+those classes instead of judging them.
 
 **Both READMEs are edited together.** `README.md` and `README.ru.md` are kept heading for
 heading; a change to one that does not reach the other is a change that will be lost.
