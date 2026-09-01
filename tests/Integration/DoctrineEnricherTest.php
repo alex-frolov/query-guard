@@ -92,7 +92,8 @@ final class DoctrineEnricherTest extends TestCase
         $trace = $this->openTrace();
 
         foreach ($this->em->getRepository(Order::class)->findAll() as $order) {
-            $order->customer?->name;
+            // touching the association is what triggers the lazy load under study
+            self::assertNotSame('', (string) $order->customer?->name);
         }
 
         $lazy = $this->annotatedEvents($trace);

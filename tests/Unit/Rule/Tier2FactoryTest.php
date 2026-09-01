@@ -75,7 +75,7 @@ final class Tier2FactoryTest extends TestCase
         self::assertStringContainsString('Other connections are unaffected', $notices[0]);
 
         // the MySQL connection was still explained — the counter proves tier 2 stayed on
-        self::assertStringContainsString('tier 2: 1 plans parsed, 0 failed.', end($notices));
+        self::assertStringContainsString('tier 2: 1 plans parsed, 0 failed.', implode("\n", $notices));
     }
 
     /**

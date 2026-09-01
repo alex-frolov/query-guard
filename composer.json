@@ -70,13 +70,22 @@
     },
     "scripts": {
         "test": "phpunit",
+        "coverage": "phpunit --coverage-text",
         "analyse": "phpstan analyse",
+        "analyse-tests": "phpstan analyse --configuration=tools/phpstan/tests.neon",
         "fix": "php-cs-fixer fix --allow-risky=yes",
+        "style": "php-cs-fixer fix --allow-risky=yes --dry-run --diff",
         "check": [
             "@test",
             "@analyse",
-            "@fix -- --dry-run --diff"
+            "@analyse-tests",
+            "@style"
         ]
+    },
+    "scripts-descriptions": {
+        "coverage": "Line coverage over src. Needs pcov or Xdebug; without one PHPUnit says so and reports nothing.",
+        "analyse-tests": "Static analysis of the suite itself, one level below src.",
+        "style": "Reports style violations without touching anything. `check` uses this; `fix` applies them."
     },
     "minimum-stability": "stable"
 }

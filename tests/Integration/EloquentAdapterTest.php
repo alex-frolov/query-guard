@@ -99,7 +99,7 @@ final class EloquentAdapterTest extends TestCase
         $groups = $trace->groupedByFingerprint();
 
         self::assertCount(1, $groups);
-        self::assertCount(5, reset($groups));
+        self::assertCount(5, array_values($groups)[0]);
     }
 
     public function testCallsitePointsAtApplicationCode(): void

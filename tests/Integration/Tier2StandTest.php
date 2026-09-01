@@ -85,9 +85,9 @@ final class Tier2StandTest extends TestCase
         $adapters = new AdapterSet([new DoctrineAdapter()]);
         $explainers = $adapters->explainers();
 
-        self::assertNotSame([], $explainers, 'the adapter must provide an explainer after the first query');
+        self::assertCount(1, $explainers, 'the adapter must provide an explainer after the first query');
 
-        $explainer = reset($explainers);
+        $explainer = array_values($explainers)[0];
         $driver = PlatformDrivers::for($explainer->platform());
         self::assertNotNull($driver, 'the '.$explainer->platform().' platform is not supported');
 

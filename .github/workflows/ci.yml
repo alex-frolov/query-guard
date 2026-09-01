@@ -89,6 +89,50 @@ jobs:
       - name: PHPStan
         run: vendor/bin/phpstan analyse --no-progress --memory-limit=1G --configuration=${{ matrix.config }}
 
+      # The suite is analysed once, not per DBAL generation: it contains no version-split
+      # wrappers of its own. One level below `src` — see tools/phpstan/tests.neon.
+      - name: PHPStan (tests)
+        if: matrix.dbal == '4'
+        run: vendor/bin/phpstan analyse --no-progress --memory-limit=1G --configuration=tools/phpstan/tests.neon
+
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: pdo_sqlite, mbstring, intl
+          coverage: pcov
+
+      - name: Cache Composer downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/composer/files
+          key: composer-coverage-${{ hashFiles('composer.json') }}
+          restore-keys: composer-coverage-
+
+      - name: Install dependencies
+        run: composer update --prefer-dist --no-interaction --no-progress
+
+      # A number in the log on every run, not a gate. There is deliberately no minimum:
+      # the end-to-end tests launch PHPUnit in a child process, and a child process
+      # contributes nothing to the parent's coverage — so `Extension` and the subscribers
+      # read as uncovered even though they are the most thoroughly exercised code here.
+      # A threshold over that figure would measure the wrong thing.
+      - name: PHPUnit with coverage
+        run: vendor/bin/phpunit --coverage-text --coverage-clover=coverage.xml
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-clover
+          path: coverage.xml
+          retention-days: 14
+
   codestyle:
     name: Code style
     runs-on: ubuntu-latest

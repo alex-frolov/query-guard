@@ -118,7 +118,7 @@ final class DoctrineAdapterTest extends TestCase
         $groups = $trace->groupedByFingerprint();
 
         self::assertCount(1, $groups, 'five fetches with different values — one fingerprint');
-        self::assertCount(5, reset($groups));
+        self::assertCount(5, array_values($groups)[0]);
     }
 
     public function testCallsitePointsAtApplicationCodeNotAtTheAdapter(): void

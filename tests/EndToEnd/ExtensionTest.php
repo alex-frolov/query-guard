@@ -117,6 +117,8 @@ final class ExtensionTest extends TestCase
             $decoded = json_decode((string) file_get_contents($baseline), true);
 
             self::assertIsArray($decoded);
+            self::assertArrayHasKey('findings', $decoded);
+            self::assertIsArray($decoded['findings']);
             self::assertCount(7, $decoded['findings']);
         } finally {
             @unlink($baseline);
@@ -291,6 +293,8 @@ final class ExtensionTest extends TestCase
     }
 
     /**
+     * @param array<string, string> $environment
+     *
      * @return array{0: string, 1: int}
      */
     private function runFixture(string $configuration, array $environment = []): array

@@ -1,0 +1,44 @@
+# The test suite, analysed one level below `src`.
+#
+# Not for its own sake: the fixtures are where `FakeAdapter` and the hand-fed collector
+# live, and those are written against the same seams the package publishes. When a seam
+# changes and a fixture is not updated with it, the suite can still pass — it exercises
+# the fixture, not the package. This is what catches that drift.
+#
+# Level 9 rather than max: `max` demands an explicit type for every `mixed`, which in
+# tests means annotating the return of every `json_decode` and every reflection call for
+# no gain in what the fixtures actually assert.
+parameters:
+    level: 9
+    paths:
+        - ../../tests
+
+    ignoreErrors:
+        # A fixture test exists to make queries, not to assert. `assertTrue(true)` is how
+        # it avoids being reported as risky — PHPUnit's own idiom for "no assertion here
+        # on purpose", and PHPStan is right that it is constant.
+        -
+            identifier: staticMethod.alreadyNarrowedType
+            message: '#Assert::assertTrue\(\) with true will always evaluate to true#'
+            path: ../../tests/EndToEnd/Fixture
+
+        # Version probes. Under the installed version PHPStan can prove the answer, but
+        # the whole point is the version that is not installed: ORM 2 against ORM 3,
+        # Laravel 11 against 13. Same reason `src/Adapter/Doctrine/Dbal.php` is ignored
+        # in dbal3.neon.
+        -
+            identifier: function.alreadyNarrowedType
+            message: '#Call to function method_exists\(\) with .* will always evaluate to true#'
+            paths:
+                - ../../tests/Integration/DoctrineEnricherTest.php
+                - ../../tests/Integration/EloquentAdapterTest.php
+
+        # DBAL describes connection parameters with a strict array shape; a test building
+        # one from environment variables cannot satisfy it. `src/Adapter/Doctrine/Driver.php`
+        # carries the same ignore inline for the same reason.
+        -
+            identifier: argument.type
+            message: '#\$params of static method Doctrine\\DBAL\\DriverManager::getConnection\(\)#'
+            paths:
+                - ../../tests/Integration/DoctrineAdapterTest.php
+                - ../../tests/Integration/Tier2StandTest.php

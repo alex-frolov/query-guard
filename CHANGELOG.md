@@ -13,9 +13,27 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   in the summary, but the gate ignored it and failed on everything, so enabling
   `select-star` — an `info` rule that fires on every Eloquent query there is — turned a
   whole suite red. Everything found is still printed; only the exit code changes.
+- The test suite is statically analysed too, at level 9 — `tools/phpstan/tests.neon`, run
+  by CI alongside the `src` analysis. The fixtures are where `FakeAdapter` and the
+  hand-fed collector live: they are written against the seams the package publishes, and
+  when a seam moves without them the suite still passes, because it is exercising the
+  fixture rather than the package. Turning it on found seven real defects in the tests,
+  among them `reset()` and `end()` results used without accounting for `false`.
+- A `coverage` CI job (pcov), reporting a figure on every run and keeping the clover
+  report as an artifact. No minimum is enforced: the end-to-end tests launch PHPUnit in a
+  child process, which contributes nothing to the parent's coverage, so the wiring reads
+  as uncovered when it is the most thoroughly exercised code in the package.
+- `requireCoverageMetadata="true"`: a test without `#[CoversClass]` or `#[CoversNothing]`
+  is an error while coverage is being collected. The suite already followed this; now it
+  cannot quietly stop.
+- `composer coverage`, `composer analyse-tests` and `composer style` scripts.
 
 ### Fixed
 
+- `composer check` ran php-cs-fixer as `@fix -- --dry-run --diff`, and Composer passes the
+  `--` through: the fixer read `--dry-run` as a path and exited 16, so the aggregate
+  command had never worked. CI invokes the binaries directly, which is why it went
+  unnoticed. Split into a `style` script that `check` calls.
 - Tier 2 resolves an `EXPLAIN` connection **per connection** instead of holding a single
   one. A static field used to keep whichever database connected most recently, so on a
   project with two of them the plan of one was read against the other — and parsed with
