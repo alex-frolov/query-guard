@@ -27,6 +27,17 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   is an error while coverage is being collected. The suite already followed this; now it
   cannot quietly stop.
 - `composer coverage`, `composer analyse-tests` and `composer style` scripts.
+- A backward-compatibility job: Roave BC Check against the most recent tag, run as a
+  container so the tool's dependency tree stays out of `composer.json`. Informational
+  while the package is 0.x — a break is meant to be visible in the pull request that
+  causes it and to land in this file, not to be blocked. It becomes blocking at 1.0.
+- Dependabot for GitHub Actions and Composer. The two are watched for different reasons:
+  actions are pinned by major, so a bad release inside that major reaches CI on its own,
+  while Composer — a library with no lock file — only raises a pull request when a release
+  falls outside a declared constraint, which is always the deliberate question "should
+  this package support a new major?". Doctrine and Illuminate majors are excluded: the
+  supported ORM range is a promise, widened by hand with the adapter changes that make it
+  true.
 
 ### Fixed
 
@@ -85,8 +96,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   recorded query.
 - `Sql` memoises the stripped form of a query. The helpers are called once per rule per
   query, and `touchesTable()` once per configured `large-tables` entry on top of that.
-- `Mode::fromString()` removed: reading a mode out of the configuration belongs to
-  `ExtensionConfiguration`, which warns about a value it did not recognise.
+- **BC break.** `Mode::fromString()` removed: reading a mode out of the configuration
+  belongs to `ExtensionConfiguration`, which warns about a value it did not recognise.
 - **BC break.** `OrmAdapter::explainer(): ?Explainer` is now
   `OrmAdapter::explainers(): array<string, Explainer>`, keyed by connection name;
   `AdapterSet` follows. A custom adapter has to return a map instead of one explainer.
@@ -94,9 +105,9 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   explainer and driver, and resolves both per connection. `rowsFor()` takes the `Plan`
   alongside the node, and `driver()` is now `driverFor(Plan)` — the driver depends on
   which connection produced the plan. `Plan` carries the connection it came from.
-- `RuleEngine`'s deferred rule set is gone, along with its second constructor argument.
-  It existed only because tier 2 needed a live connection before its rules could be
-  built; nothing defers any more.
+- **BC break.** `RuleEngine`'s deferred rule set is gone, along with its second
+  constructor argument. It existed only because tier 2 needed a live connection before its
+  rules could be built; nothing defers any more.
 - `composer.lock` is no longer committed; CI resolves dependencies on every run.
 
 ## [0.1.0] - 2026-08-27

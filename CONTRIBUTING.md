@@ -45,6 +45,20 @@ written against the same seams the package publishes, and when a seam moves with
 the suite still passes — it is exercising the fixture, not the package. Its `ignoreErrors`
 entries are for intentional test idioms only, each with the reason next to it.
 
+**Backward compatibility is checked, and does not block — yet.** CI runs
+[Roave BC Check](https://github.com/Roave/BackwardCompatibilityCheck) against the most
+recent tag and prints what a release from this branch would break. While the package is
+0.x that job is informational: the seams are still being cut, and `OrmAdapter` and
+`PlanProvider` have already changed on purpose. The job exists so a break is visible in
+the pull request that causes it and reaches the CHANGELOG, rather than reaching a user's
+upgrade. **A reported break is not a blocker; a reported break missing from the CHANGELOG
+is.** At 1.0 the `continue-on-error` line in the workflow comes out and breaks start
+failing the build.
+
+It runs as a container rather than a dev dependency — Roave brings a large tree of its
+own, and installing it beside PHPStan and php-cs-fixer is how this package would acquire
+the dependency conflict it currently does not have.
+
 **Both READMEs are edited together.** `README.md` and `README.ru.md` are kept heading for
 heading; a change to one that does not reach the other is a change that will be lost.
 

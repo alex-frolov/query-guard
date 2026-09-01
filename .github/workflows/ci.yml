@@ -161,6 +161,28 @@ jobs:
       - name: Validate composer.json
         run: composer validate --strict
 
+  backward-compatibility:
+    name: Backward compatibility
+    runs-on: ubuntu-latest
+    # Informational until 1.0, and deliberately so: 0.x is where the seams are still
+    # being cut, and this package has already changed `OrmAdapter` and `PlanProvider` on
+    # purpose. What the job is for right now is making a break visible in the pull request
+    # that causes it, so it reaches the CHANGELOG instead of a user's upgrade. Drop this
+    # line at 1.0 and the breaks start failing the build, which is the point of 1.0.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # the tool diffs against the most recent tag, so it needs the tags and the
+          # history behind them — the default shallow checkout has neither
+          fetch-depth: 0
+
+      # Run as a container rather than `composer require --dev`: Roave pulls a large
+      # dependency tree of its own, and installing it beside phpstan and php-cs-fixer is
+      # how a dev-dependency conflict gets introduced into a package that has none.
+      - name: Roave BC check
+        uses: docker://nyholm/roave-bc-check-ga
+
   tier2:
     name: Tier 2 / ${{ matrix.platform }}
     runs-on: ubuntu-latest
