@@ -134,6 +134,22 @@ final class Tier1RulesTest extends TestCase
         self::assertStringContainsString('"invoices"', $findings[0]->message);
     }
 
+    /**
+     * `large-tables` holds names, not spellings: an ORM qualifies by schema whenever one
+     * is configured, and the rule used to go quiet on exactly those projects.
+     */
+    public function testNoLimitSeesASchemaQualifiedTable(): void
+    {
+        $trace = $this->trace();
+        $trace->record($this->event('SELECT id FROM public.invoices', [], '/project/src/A.php', 5));
+        $trace->record($this->event('SELECT id FROM "public"."invoices" LIMIT 10', [], '/project/src/A.php', 6));
+
+        $findings = $this->findingsFor(new NoLimitRule($this->resolver(), ['invoices']), $trace);
+
+        self::assertCount(1, $findings);
+        self::assertStringContainsString('"invoices"', $findings[0]->message);
+    }
+
     public function testEveryFindingCarriesASignature(): void
     {
         $trace = $this->trace();

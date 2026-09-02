@@ -275,7 +275,7 @@ Both work on the class as well as the method.
 | `duplicate-threshold` | Repeats before it counts as a duplicate | `5` |
 | `query-in-loop-threshold` | Queries from one place before it looks like a loop | `5` |
 | `max-queries` | Query budget per test | not set, rule silent |
-| `large-tables` | Comma-separated tables for `no-limit` | not set, rule silent |
+| `large-tables` | Comma-separated tables for `no-limit`; a bare name matches the table in any schema, a qualified one (`public.orders`) only in that schema | not set, rule silent |
 | `select-star` | Enable `select-star` | `false` |
 | `tier2` | Enable plan rules | `false` |
 | `min-rows` | Table size below which plan rules do not judge | `1000` |
@@ -471,7 +471,9 @@ Two more parameters are worth adding, but only once each condition holds — nei
 sensible value in the abstract:
 
 ```xml
-<!-- your own large tables, by name; the rule is silent without this list -->
+<!-- your own large tables, by name; the rule is silent without this list. A bare name
+     matches the table however the query spells it — `orders`, `public.orders`,
+     `"public"."orders"`. Write `public.orders` to mean that schema and no other -->
 <parameter name="large-tables" value="users,orders"/>
 
 <!-- only when the test database carries real volume: on a fixture-sized one the

@@ -21,8 +21,17 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   among them `reset()` and `end()` results used without accounting for `false`.
 - A `coverage` CI job (pcov), reporting a figure on every run and keeping the clover
   report as an artifact. No minimum is enforced: the end-to-end tests launch PHPUnit in a
-  child process, which contributes nothing to the parent's coverage, so the wiring reads
-  as uncovered when it is the most thoroughly exercised code in the package.
+  child process, which contributes nothing to the parent's coverage, so the figure always
+  understates what the suite actually exercises.
+- Unit tests for the wiring — `Extension`, all six subscribers and the Eloquent service
+  provider — which had measured at exactly 0% (0 of 145 statements). Not a rounding
+  error: every test that touched them ran in a child process. They are now driven
+  directly, with PHPUnit's own event objects built by hand, and read at 96%; the six
+  statements left are the ones a test cannot reach without taking the suite down with it
+  (`strict` mode's `exit(1)` at shutdown, and the two bail-outs that need a `TextUI`
+  configuration nobody can construct). This adds to the end-to-end suite rather than
+  replacing any part of it: a unit test can check what a subscriber decides, only a real
+  runner can check that PHPUnit calls it, and when.
 - `requireCoverageMetadata="true"`: a test without `#[CoversClass]` or `#[CoversNothing]`
   is an error while coverage is being collected. The suite already followed this; now it
   cannot quietly stop.
@@ -75,6 +84,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   reported again — it is the most ordinary shape of query there is, and the false
   negative was in the flagship rule.
 - `LIMIT` and table names are no longer matched inside string literals or comments.
+- `no-limit` sees schema-qualified table names. `large-tables="orders"` now matches
+  `FROM public.orders`, `FROM "public"."orders"` and ``FROM `shop`.`orders` `` — Doctrine
+  qualifies by schema whenever one is configured, and the rule used to go quiet on
+  exactly those projects while looking as if it were working. A name in the
+  configuration may be qualified too (`public.orders`), and then the schema is matched as
+  written. The reverse mistake is gone with it: `FROM shop.orders` no longer counts as a
+  hit for a table named `shop`.
 - A configuration value that cannot be read now produces a warning in the summary instead
   of a silent default. `mode="strickt"` used to leave the suite in `report`, where
   nothing fails, and say nothing about it.

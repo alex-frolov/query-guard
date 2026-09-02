@@ -31,6 +31,12 @@ final class Sql
     private const LITERAL_OR_COMMENT = "#'(?:[^']|'')*'|/\*.*?\*/|--[^\n]*#s";
 
     /**
+     * Any single identifier as a query may spell it — quoted in any of the three
+     * dialects, or bare. Used to step over the qualifiers in front of a table name.
+     */
+    private const IDENTIFIER = '(?:"[^"]*"|`[^`]*`|\[[^\]]*\]|[\w$]+)';
+
+    /**
      * How many distinct queries to remember before starting the cache over.
      *
      * A bound is needed because the key is the raw SQL: a suite building endless
@@ -81,12 +87,58 @@ final class Sql
 
     /**
      * Whether the table is mentioned in a `FROM` or a `JOIN`.
+     *
+     * The configured name is matched against the **end** of the qualified name in the
+     * query, so a bare `orders` also answers yes for `public.orders`, `"public"."orders"`
+     * and `` `shop`.`orders` ``. That is not generosity: Doctrine qualifies by schema
+     * whenever one is configured, PostgreSQL projects write `public.` by hand, and
+     * `large-tables` is written in the terms a developer thinks in — a name, not a
+     * spelling. A qualified `public.orders` in the configuration stays exact about the
+     * schema and does not match `archive.orders`.
+     *
+     * A qualifier is not a table, either. `FROM shop.orders` used to answer yes for
+     * `shop`, because the old pattern ended on a word boundary and a dot is one.
      */
     public static function touchesTable(string $sql, string $table): bool
     {
-        $quoted = preg_quote($table, '/');
+        $parts = self::identifierParts($table);
 
-        return 1 === preg_match('/\b(?:FROM|JOIN)\s+["`\[]?'.$quoted.'["`\]]?\b/i', self::stripped($sql));
+        if ([] === $parts) {
+            return false;
+        }
+
+        $name = implode('\s*\.\s*', array_map(self::identifierPattern(...), $parts));
+
+        // `(?:IDENTIFIER\.)*` — whatever the query puts in front (a schema, a database);
+        // the lookaheads keep the match from ending mid-name or on a qualifier
+        $pattern = '/\b(?:FROM|JOIN)\s+(?:'.self::IDENTIFIER.'\s*\.\s*)*'.$name.'(?!\s*\.)(?![\w$])/i';
+
+        return 1 === preg_match($pattern, self::stripped($sql));
+    }
+
+    /**
+     * The parts of a configured name: `public.orders` is two, `"my.table"` is one — a
+     * dot inside quotes belongs to the name rather than separating two of them.
+     *
+     * @return list<string>
+     */
+    private static function identifierParts(string $name): array
+    {
+        // a branch reset group, so every spelling captures into the same slot
+        preg_match_all('/(?|"([^"]*)"|`([^`]*)`|\[([^\]]*)\]|([^\s.]+))/', $name, $matches);
+
+        return array_values(array_filter($matches[1], static fn (string $part): bool => '' !== $part));
+    }
+
+    /**
+     * One part of a name as the query may spell it: quoted in any of the three dialects,
+     * or bare.
+     */
+    private static function identifierPattern(string $part): string
+    {
+        $quoted = preg_quote($part, '/');
+
+        return '(?:"'.$quoted.'"|`'.$quoted.'`|\['.$quoted.'\]|'.$quoted.')';
     }
 
     /**

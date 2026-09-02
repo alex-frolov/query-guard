@@ -72,6 +72,38 @@ final class SqlTest extends TestCase
         self::assertFalse(Sql::touchesTable('SELECT * FROM users_archive', 'users'));
     }
 
+    public function testTableIsFoundThroughItsQualifiers(): void
+    {
+        self::assertTrue(Sql::touchesTable('SELECT * FROM public.users', 'users'));
+        self::assertTrue(Sql::touchesTable('SELECT * FROM "public"."users"', 'users'));
+        self::assertTrue(Sql::touchesTable('SELECT * FROM `shop`.`users`', 'users'));
+        self::assertTrue(Sql::touchesTable('SELECT * FROM [dbo].[users]', 'users'));
+        self::assertTrue(Sql::touchesTable('SELECT * FROM shop.public.users', 'users'));
+        self::assertTrue(Sql::touchesTable('SELECT * FROM orders o JOIN public.users u ON 1', 'users'));
+    }
+
+    /**
+     * The schema in the configured name is a filter, not decoration.
+     */
+    public function testAQualifiedConfiguredNameKeepsItsSchema(): void
+    {
+        self::assertTrue(Sql::touchesTable('SELECT * FROM public.users', 'public.users'));
+        self::assertTrue(Sql::touchesTable('SELECT * FROM "public"."users"', 'public.users'));
+        self::assertTrue(Sql::touchesTable('SELECT * FROM public.users', '"public"."users"'));
+        self::assertFalse(Sql::touchesTable('SELECT * FROM archive.users', 'public.users'));
+        self::assertFalse(Sql::touchesTable('SELECT * FROM users', 'public.users'));
+    }
+
+    /**
+     * A qualifier is a schema or a database, not the table being read.
+     */
+    public function testAQualifierIsNotTheTable(): void
+    {
+        self::assertFalse(Sql::touchesTable('SELECT * FROM shop.users', 'shop'));
+        self::assertFalse(Sql::touchesTable('SELECT * FROM "shop"."users"', 'shop'));
+        self::assertFalse(Sql::touchesTable('SELECT * FROM shop.public.users', 'shop.public'));
+    }
+
     public function testSelectStarLooksPastALeadingComment(): void
     {
         self::assertTrue(Sql::isSelectStar('SELECT * FROM users'));

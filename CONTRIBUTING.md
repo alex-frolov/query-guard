@@ -22,22 +22,46 @@ CI runs it across PHP 8.2–8.5, both Doctrine DBAL generations and, for tier 2,
 MySQL and PostgreSQL. It also measures coverage on one job — `composer coverage`
 locally, which needs pcov or Xdebug installed.
 
-**Coverage is a signal, not a gate, and the headline number is misleading on purpose.**
-The end-to-end tests launch PHPUnit in a child process, and a child process contributes
-nothing to the parent's coverage. So `Extension` and every subscriber — the code those
-18 tests exercise more thoroughly than anything else in the package — measure at exactly
-**0% (0/145 statements)**. The overall figure is around 58% because of them; the part
-worth reading is around 71%:
+**Coverage is a signal, not a gate.** The overall figure is around 70%:
 
 | | Lines |
 |---|---|
+| wiring (`Extension`, `Subscriber/*`, the service provider) | ~96% (139/145) |
 | `src/Query` | ~91% |
 | `src/Rule` | ~79% |
+| `src/Report` | ~66% |
+| `src/Adapter` | ~50% — the Doctrine DBAL wrappers need a live driver |
 | `src/Platform` | ~42% — the tier 2 stand tests skip without a live database |
-| wiring (`Extension`, `Subscriber/*`, the service provider) | 0%, and will stay there |
 
-Never "fix" the wiring figure by moving those tests in-process: running the extension
+The end-to-end tests count for none of it: they launch PHPUnit in a child process, and a
+child process contributes nothing to the parent's coverage. The wiring figure above comes
+from `tests/Unit/Subscriber` and `tests/Unit/ExtensionTest`, which build PHPUnit's own
+event objects by hand and hand them to a subscriber directly.
+
+That is a different question from the one the end-to-end suite answers, and it does not
+replace it. A unit test can check what a subscriber decides; only a real runner can check
+that PHPUnit calls it at all, and at the moment the package expects. That moment is the
+decision false positives hinge on — the trace opens on `Test\Prepared`, after `setUp()` —
+and it is asserted nowhere else. Never move those tests in-process: running the extension
 inside the runner that is running it is not the thing under test.
+
+Six statements in the wiring are deliberately not covered, because reaching them means
+breaking the run that would be doing the reaching:
+
+- `strict` mode fails a run from a shutdown function that calls `exit(1)`. In-process,
+  that is the test suite's own exit code. `tests/EndToEnd/ExtensionTest.php` asserts it
+  against a real runner instead, exit code and all;
+- `Extension` gives up when PHPUnit is configured for no output at all — which needs a
+  `TextUI` `Configuration` saying so, and that is a final value object whose constructor
+  changes shape between PHPUnit versions, so the tests pass the real one of the run in
+  progress;
+- and when the output stream cannot be opened, which `fopen('php://stdout')` does not do.
+
+`tests/Unit/ExtensionTest.php` still drives `bootstrap()` on every supported version, but
+below PHPUnit 13 it can only assert that the collector was activated: the extension facade
+became an interface in 13, and before that it is final and writes straight into an event
+system that is sealed by the time any test runs. Everything the extension decides has
+happened by the point that throws, so the sealing is caught and the rest is skipped.
 
 `composer update` and not `install`: this is a library, `composer.lock` is deliberately
 not in the repository, and CI resolves dependencies afresh on every run.

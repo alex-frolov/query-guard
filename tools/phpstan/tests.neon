@@ -33,6 +33,15 @@ parameters:
                 - ../../tests/Integration/DoctrineEnricherTest.php
                 - ../../tests/Integration/EloquentAdapterTest.php
 
+        # A service provider is typed against the full framework `Application`, and the
+        # package depends on `illuminate/database` alone — `laravel/framework` is not, and
+        # should not become, a development dependency for one constructor signature. The
+        # provider only ever calls `bound()` and `make()`, which a plain container answers.
+        -
+            identifier: argument.type
+            message: '#\$app of class QueryGuard\\Adapter\\Eloquent\\QueryGuardServiceProvider constructor#'
+            path: ../../tests/Integration/QueryGuardServiceProviderTest.php
+
         # DBAL describes connection parameters with a strict array shape; a test building
         # one from environment variables cannot satisfy it. `src/Adapter/Doctrine/Driver.php`
         # carries the same ignore inline for the same reason.

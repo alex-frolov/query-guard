@@ -120,9 +120,8 @@ jobs:
 
       # A number in the log on every run, not a gate. There is deliberately no minimum:
       # the end-to-end tests launch PHPUnit in a child process, and a child process
-      # contributes nothing to the parent's coverage — so `Extension` and the subscribers
-      # read as uncovered even though they are the most thoroughly exercised code here.
-      # A threshold over that figure would measure the wrong thing.
+      # contributes nothing to the parent's coverage, so the figure always understates
+      # what the suite exercises. A threshold over it would measure the wrong thing.
       - name: PHPUnit with coverage
         run: vendor/bin/phpunit --coverage-text --coverage-clover=coverage.xml
 
