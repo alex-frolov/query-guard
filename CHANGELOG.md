@@ -6,8 +6,79 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **A per-request SQL comment no longer hides every finding.** `Fingerprint` normalised
+  its own way and did not strip comments, while `Rule\Sql` did — so on a project whose
+  tracing middleware appends `/* trace=... */` to every statement, the same query arrived
+  with a different fingerprint each run. `n-plus-one` and `duplicate-query` group by
+  fingerprint: both saw a suite of unique queries and reported nothing at all, silently.
+  Both now go through one `Query\SqlText`, which is the only place that knows where a
+  comment ends and a literal begins. **This changes fingerprint values** — a baseline
+  keyed on a commented statement has to be regenerated; see `UPGRADING.md`.
+- **The Eloquent listener no longer settles for one connection without saying so.**
+  `DB::getFacadeRoot()` hands back a `DatabaseManager`, which has no `listen()` of its
+  own: the call went through `__call` and landed on the default connection, covering it
+  and nothing else — while `isInstalled()` reported success and the summary looked
+  healthy. The adapter now asks the container for `events` first, then the manager for
+  the dispatcher its connections share, and only then falls back to a connection-level
+  subscription — which now announces, in the summary, how much of the project it can see.
+- **Two databases sharing a name are no longer one database.** Connections were keyed by
+  `dbname`, so a primary and its read replica collided and the second overwrote the
+  first: tier 2 then explained the replica's queries against the primary. They are now
+  keyed by the whole endpoint — database, host, port, user — and labelled by the database
+  name, with a second endpoint claiming a taken name reported as `name#2` and the rename
+  announced. Reconnecting the same endpoint keeps its name.
+- Positional parameters reaching `DoctrineExplainer` zero-indexed are rebased to one.
+  DBAL binds them correctly itself, but the deprecated `Statement::execute($params)` path
+  passes the caller's list unchanged, and `bindValue(0, ...)` is rejected outright — the
+  EXPLAIN then failed for a reason with nothing to do with the query under study.
+
+### Changed
+
+Both of these break the released API. Before 1.0 that is allowed; `UPGRADING.md` carries
+the instructions.
+
+- `OrmAdapter` gained `notices()`, so a custom adapter has to implement it — returning an
+  empty list is the right answer unless it has something to say about a run that
+  collected queries.
+- `DoctrineAdapter::markConnected()` became `register()`, which takes an endpoint
+  alongside the label and returns the name the connection is actually known under. Only
+  `Adapter\Doctrine\Driver` calls it.
+
+### Removed
+
+- Public API nothing called, taken out before 1.0 makes it permanent: `Plan::estimatedRows()`
+  and the `Plan::$cost` constructor argument (plan cost is no longer parsed),
+  `Finding::withSignature()`, `RuleEngine::ruleIds()`, `Callsite::equals()`,
+  `Trace::durationMs()`, `Trace::isEmpty()` and `Platform\Json::float()`. Replacements,
+  where there are any, are in `UPGRADING.md`.
+
 ### Added
 
+- `report-json` parameter: the whole run written to a file as JSON — counters, notices
+  and findings, with paths relative to the working directory and a `failing` flag
+  answering the only question a CI script usually has. The console summary is written to
+  be read by a person and will be reworded; the README's own recipes were parsing it
+  (`grep 'against a budget'`), which is a fair description of the gap rather than a
+  defence of it. The summary is never replaced by the file: a run that writes a report
+  and prints nothing is a run whose findings nobody sees.
+- `skip-paths` parameter: extra path fragments a callsite is never blamed on, added to
+  the built-in list rather than replacing it. A project vendoring its own framework had
+  no way to say so, and findings pointed at files nobody was going to edit. Held
+  statically for the same reason `QueryGuard` is — a DBAL middleware is built by the
+  application's container, which cannot be handed a configured resolver.
+- Baseline entries that silenced nothing are counted in the summary. A baseline only ever
+  grew otherwise: the finding gets fixed, the entry stays, and from then on the file
+  quietly silences something that no longer exists — including, in time, a regression
+  landing on the same rule in the same file. Deliberately not called "obsolete": after
+  `--filter` or an excluded group, an unmatched entry only means its test did not run,
+  and a tool that called that obsolete would teach people to delete live entries.
+- `OrmAdapter::notices()`: what an adapter has to say about a run that *did* collect
+  queries. `installationHint()` only covered a run that collected nothing, and the case
+  that needed saying most was the other one — a summary about to look healthy while whole
+  connections went unwatched.
+- `SECURITY.md`, `UPGRADING.md`, issue templates and a pull-request template.
 - `fail-on` parameter: the lowest severity `strict` mode will fail a run over — `error`,
   `warning` (default) or `info`. Severity was already presented as a scale of certainty
   in the summary, but the gate ignored it and failed on everything, so enabling

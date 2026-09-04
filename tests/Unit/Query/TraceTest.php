@@ -41,27 +41,10 @@ final class TraceTest extends TestCase
         self::assertCount(1, $trace->fixtureEvents());
     }
 
-    public function testDurationIsNullWhenNoAdapterReportsTiming(): void
+    public function testAFreshTraceHasNoEvents(): void
     {
-        $trace = $this->trace();
-        $trace->record(new QueryEvent('SELECT 1'));
-
-        self::assertNull($trace->durationMs());
-    }
-
-    public function testDurationSumsWhatIsKnown(): void
-    {
-        $trace = $this->trace();
-        $trace->record(new QueryEvent('SELECT 1', durationMs: 1.5));
-        $trace->record(new QueryEvent('SELECT 2', durationMs: 2.5));
-        $trace->record(new QueryEvent('SELECT 3'));
-
-        self::assertSame(4.0, $trace->durationMs());
-    }
-
-    public function testEmptyTrace(): void
-    {
-        self::assertTrue($this->trace()->isEmpty());
+        self::assertSame(0, $this->trace()->count());
+        self::assertSame([], $this->trace()->events());
     }
 
     private function trace(): Trace

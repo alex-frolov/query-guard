@@ -110,4 +110,23 @@ final class AdapterSet
 
         return $hints;
     }
+
+    /**
+     * What the adapters have to say about a run that collected something — see
+     * `OrmAdapter::notices()`.
+     *
+     * @return list<string>
+     */
+    public function notices(): array
+    {
+        $notices = [];
+
+        foreach ($this->adapters as $adapter) {
+            foreach ($adapter->notices() as $notice) {
+                $notices[] = $notice;
+            }
+        }
+
+        return $notices;
+    }
 }

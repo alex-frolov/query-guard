@@ -9,6 +9,7 @@ use PHPUnit\Event\TestRunner\ExecutionFinishedSubscriber as PHPUnitExecutionFini
 use QueryGuard\Adapter\AdapterSet;
 use QueryGuard\Baseline\Baseline;
 use QueryGuard\Collector\DefaultQueryCollector;
+use QueryGuard\ExtensionConfiguration;
 use QueryGuard\Finding\Severity;
 use QueryGuard\Mode;
 use QueryGuard\Report\Report;
@@ -30,7 +31,43 @@ final class ExecutionFinishedSubscriber implements PHPUnitExecutionFinishedSubsc
         private readonly string $baselinePath = '',
         private readonly ?Tier2Factory $tier2 = null,
         private readonly Severity $failOn = Severity::Warning,
+        private readonly ?Baseline $baseline = null,
     ) {
+    }
+
+    /**
+     * Baseline entries that silenced nothing.
+     *
+     * A baseline only ever grows otherwise: the finding gets fixed, the entry stays, and
+     * from then on the file quietly silences something that no longer exists — including,
+     * eventually, a regression that lands on the same rule in the same file.
+     *
+     * Deliberately not phrased as "obsolete". After `--filter`, or a run that excluded a
+     * group, an unmatched entry only means its test did not run, and a tool that called
+     * that obsolete would be teaching people to delete live entries.
+     *
+     * @return list<string>
+     */
+    private function baselineNotices(): array
+    {
+        // in regeneration mode nothing is matched against, so everything would look unused
+        if (null !== $this->generated || null === $this->baseline) {
+            return [];
+        }
+
+        $unmatched = $this->baseline->unmatched();
+
+        if ([] === $unmatched) {
+            return [];
+        }
+
+        return [sprintf(
+            "%d baseline entries silenced nothing in this run.\n"
+            ."After a full-suite run they are obsolete: regenerate with %s=1 to drop them.\n"
+            .'After a filtered run it only means those tests did not execute.',
+            \count($unmatched),
+            ExtensionConfiguration::GENERATE_BASELINE_ENV,
+        )];
     }
 
     /**
@@ -75,7 +112,17 @@ final class ExecutionFinishedSubscriber implements PHPUnitExecutionFinishedSubsc
             $this->report->addNotice($notice);
         }
 
+        // said even when collection worked: a trace missing whole connections and a
+        // complete one both end in the same "no findings" line otherwise
+        foreach ($this->adapters->notices() as $notice) {
+            $this->report->addNotice($notice);
+        }
+
         foreach ($this->tier2?->notices() ?? [] as $notice) {
+            $this->report->addNotice($notice);
+        }
+
+        foreach ($this->baselineNotices() as $notice) {
             $this->report->addNotice($notice);
         }
 

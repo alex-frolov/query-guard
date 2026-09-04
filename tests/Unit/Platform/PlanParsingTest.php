@@ -112,11 +112,6 @@ final class PlanParsingTest extends TestCase
         self::assertFalse($node->hasNoPossibleIndex());
     }
 
-    public function testMySqlReportsCost(): void
-    {
-        self::assertSame(10287.90, $this->mysql('no-index')->cost);
-    }
-
     // --- PostgreSQL ---------------------------------------------------------
 
     public function testPostgresSequentialScan(): void

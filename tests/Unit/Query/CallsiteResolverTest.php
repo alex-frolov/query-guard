@@ -11,6 +11,13 @@ use QueryGuard\Query\CallsiteResolver;
 #[CoversClass(CallsiteResolver::class)]
 final class CallsiteResolverTest extends TestCase
 {
+    protected function tearDown(): void
+    {
+        // static, because a DBAL middleware is built by the application's container and
+        // cannot be handed a configured resolver — see the class docblock
+        CallsiteResolver::configureSkipPaths([]);
+    }
+
     public function testReturnsFirstApplicationFrame(): void
     {
         $resolver = new CallsiteResolver(['#/vendor/#']);
@@ -104,5 +111,57 @@ final class CallsiteResolverTest extends TestCase
         $wider = $resolver->withPatterns(['#/app/src/Repository/#']);
 
         self::assertNull($wider->resolve($stack));
+    }
+
+    /**
+     * The `skip-paths` parameter. A project's own framework is not something the package
+     * can enumerate, and a callsite pointing inside one names a file nobody will edit.
+     *
+     * Paths here are `/project/...`, not `/app/...`: `default()` steps over this
+     * package's own `src/`, and under the container that is exactly `/app/src`.
+     */
+    public function testConfiguredPathsAreSteppedOverByEveryResolverBuiltAfterwards(): void
+    {
+        $stack = [
+            ['file' => '/project/vendor/api-platform/core/src/State/Provider.php', 'line' => 10, 'function' => 'provide'],
+            ['file' => '/project/src/Repository/OrderRepository.php', 'line' => 42, 'function' => 'findAll'],
+        ];
+
+        self::assertSame('/project/vendor/api-platform/core/src/State/Provider.php', self::resolvedFile($stack));
+
+        CallsiteResolver::configureSkipPaths(['vendor/api-platform']);
+
+        self::assertSame('/project/src/Repository/OrderRepository.php', self::resolvedFile($stack));
+    }
+
+    /**
+     * A fragment, not a regular expression: an XML attribute is no place to discover that
+     * `.` matches anything.
+     */
+    public function testAFragmentIsQuotedRatherThanReadAsAPattern(): void
+    {
+        CallsiteResolver::configureSkipPaths(['lib/a.c']);
+
+        self::assertSame('/project/lib/abc/Thing.php', self::resolvedFile([
+            ['file' => '/project/lib/abc/Thing.php', 'line' => 1, 'function' => 'run'],
+        ]));
+    }
+
+    public function testSurroundingSlashesAndEmptyFragmentsAreIgnored(): void
+    {
+        CallsiteResolver::configureSkipPaths(['/vendor/acme/', '', '   ']);
+
+        self::assertSame('/project/lib/Thing.php', self::resolvedFile([
+            ['file' => '/project/vendor/acme/lib/Thing.php', 'line' => 1, 'function' => 'run'],
+            ['file' => '/project/lib/Thing.php', 'line' => 2, 'function' => 'run'],
+        ]));
+    }
+
+    /**
+     * @param list<array<string, mixed>> $stack
+     */
+    private static function resolvedFile(array $stack): ?string
+    {
+        return CallsiteResolver::default()->resolve($stack)?->file;
     }
 }

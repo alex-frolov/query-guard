@@ -40,6 +40,8 @@ final readonly class ExtensionConfiguration
 
     /**
      * @param list<string> $largeTables
+     * @param list<string> $skipPaths   extra path fragments a callsite is never resolved
+     *                                  to — the project's own frameworks
      * @param list<string> $warnings    parameters that could not be understood; the
      *                                  extension puts these into the summary
      */
@@ -56,6 +58,8 @@ final readonly class ExtensionConfiguration
         public bool $tier2 = false,
         public int $minRows = PlanRule::DEFAULT_MIN_ROWS,
         public Severity $failOn = Severity::Warning,
+        public array $skipPaths = [],
+        public string $jsonReportPath = '',
         public array $warnings = [],
     ) {
     }
@@ -77,6 +81,8 @@ final readonly class ExtensionConfiguration
             tier2: self::bool($parameters, 'tier2', $warnings),
             minRows: self::positiveInt($parameters, 'min-rows', PlanRule::DEFAULT_MIN_ROWS, 1, $warnings) ?? PlanRule::DEFAULT_MIN_ROWS,
             failOn: self::failOn($parameters, $warnings),
+            skipPaths: self::list($parameters, 'skip-paths'),
+            jsonReportPath: $parameters->has('report-json') ? trim($parameters->get('report-json')) : '',
             warnings: $warnings,
         );
     }

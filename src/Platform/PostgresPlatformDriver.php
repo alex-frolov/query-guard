@@ -78,7 +78,7 @@ final class PostgresPlatformDriver implements PlatformDriver
         $nodes = [];
         $this->walk($root, $nodes, false);
 
-        return new Plan($this->name(), $nodes, Json::float($root, 'Total Cost'));
+        return new Plan($this->name(), $nodes);
     }
 
     /**

@@ -37,17 +37,4 @@ final readonly class Finding
     {
         return $rule.'|'.(null === $callsite ? 'unknown' : $callsite->file).'|'.$fingerprint;
     }
-
-    public function withSignature(string $signature): self
-    {
-        return new self(
-            $this->rule,
-            $this->test,
-            $this->message,
-            $this->severity,
-            $this->callsite,
-            $this->count,
-            $signature,
-        );
-    }
 }

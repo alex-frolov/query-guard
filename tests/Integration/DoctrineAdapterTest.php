@@ -217,6 +217,37 @@ final class DoctrineAdapterTest extends TestCase
         );
     }
 
+    /**
+     * A primary and its replica carry one database name and two endpoints.
+     *
+     * Keying by the name alone meant the second overwrote the first: tier 2 then
+     * explained the replica's queries against the primary, and nothing said so.
+     */
+    public function testTwoDatabasesSharingANameAreKeptApart(): void
+    {
+        self::assertSame('shop', DoctrineAdapter::register('shop', 'shop|10.0.0.1|3306|app', 'mysql'));
+        self::assertSame('shop#2', DoctrineAdapter::register('shop', 'shop|10.0.0.2|3306|app', 'mysql'));
+
+        self::assertStringContainsString(
+            'two connections answer to the database name "shop"',
+            implode("\n", (new DoctrineAdapter())->notices()),
+        );
+    }
+
+    /**
+     * DBAL reconnects. A run must not accumulate a connection per reconnect, and a
+     * project with one database must never see a name it did not configure.
+     */
+    public function testReconnectingTheSameEndpointKeepsItsName(): void
+    {
+        $endpoint = 'shop|10.0.0.1|3306|app';
+
+        self::assertSame('shop', DoctrineAdapter::register('shop', $endpoint, 'mysql'));
+        self::assertSame('shop', DoctrineAdapter::register('shop', $endpoint, 'mysql'));
+
+        self::assertSame([], (new DoctrineAdapter())->notices());
+    }
+
     private function file(string $name): string
     {
         return sys_get_temp_dir().'/query-guard-'.$name.'-'.getmypid().'.sqlite';

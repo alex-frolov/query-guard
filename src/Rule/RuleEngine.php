@@ -42,12 +42,4 @@ final class RuleEngine
 
         return $findings;
     }
-
-    /**
-     * @return list<string>
-     */
-    public function ruleIds(): array
-    {
-        return array_map(static fn (Rule $rule): string => $rule->id(), $this->rules);
-    }
 }

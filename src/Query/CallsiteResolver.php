@@ -16,6 +16,13 @@ namespace QueryGuard\Query;
  * classes, and every callsite it reports now points inside the package itself. Relying
  * on the substring `vendor/` is no better — a package may well be installed by path.
  *
+ * Projects add their own frameworks to the skip list through the `skip-paths`
+ * parameter, and it is held statically for the same reason `QueryGuard` is: a DBAL
+ * middleware is built by the application's container, which has no way to reach the
+ * PHPUnit extension and be handed a configured resolver. The extension writes the list
+ * during `bootstrap()`, long before any connection exists, and every `default()` built
+ * afterwards carries it.
+ *
  * The verdict per file is memoised. Resolution happens on every recorded query now that
  * the raw stack is no longer kept (see `QueryEvent`), and a stack is mostly the same few
  * dozen framework files over and over: seven regular expressions per frame turn into one
@@ -26,6 +33,13 @@ final class CallsiteResolver
 {
     /** @var array<string, bool> */
     private array $verdicts = [];
+
+    /**
+     * Extra path fragments configured by the project — see the class docblock.
+     *
+     * @var list<string>
+     */
+    private static array $configured = [];
 
     /**
      * @param list<string> $skipPatterns regular expressions matched against the file path
@@ -44,7 +58,36 @@ final class CallsiteResolver
             '#/vendor/laravel/#',
             '#/vendor/illuminate/#',
             '#/vendor/composer/#',
+            ...self::$configured,
         ]);
+    }
+
+    /**
+     * Path fragments the project wants stepped over, as written in `skip-paths`.
+     *
+     * A fragment, not a regular expression: `vendor/api-platform/` is what a developer
+     * knows, and asking for `#/vendor/api-platform/#` in an XML attribute is asking for a
+     * silently broken pattern. Whatever is given is quoted and matched anywhere in the
+     * path, with separators normalised to `/` so a Windows checkout answers the same.
+     *
+     * Callers that build a resolver of their own — `Recorder` and `EloquentAdapter` —
+     * go through `default()`, so setting this once covers every adapter.
+     *
+     * @param list<string> $fragments
+     */
+    public static function configureSkipPaths(array $fragments): void
+    {
+        $patterns = [];
+
+        foreach ($fragments as $fragment) {
+            $fragment = trim(str_replace('\\', '/', $fragment), '/');
+
+            if ('' !== $fragment) {
+                $patterns[] = '#/'.preg_quote($fragment, '#').'/#';
+            }
+        }
+
+        self::$configured = $patterns;
     }
 
     /**

@@ -228,6 +228,11 @@ final class Tier2FactoryTest extends TestCase
             {
                 return 'nothing to do';
             }
+
+            public function notices(): array
+            {
+                return [];
+            }
         };
     }
 }

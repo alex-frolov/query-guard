@@ -77,6 +77,39 @@ final class BaselineTest extends TestCase
         self::assertTrue($inCi->contains($this->finding('n-plus-one', '/builds/acme/project/src/Repo.php', 'select a')));
     }
 
+    /**
+     * A baseline only ever grows otherwise: the finding gets fixed, the entry stays, and
+     * from then on the file silences something that no longer exists.
+     */
+    public function testEntriesThatSilencedNothingAreReported(): void
+    {
+        $stillHappening = $this->finding('n-plus-one', '/project/src/Repo.php', 'select a');
+        $longSinceFixed = $this->finding('n-plus-one', '/project/src/Legacy.php', 'select b');
+
+        $baseline = Baseline::empty();
+        $baseline->add($stillHappening);
+        $baseline->add($longSinceFixed);
+
+        self::assertCount(2, $baseline->unmatched());
+
+        $baseline->contains($stillHappening);
+
+        self::assertSame(
+            ['n-plus-one|/project/src/Legacy.php|select b'],
+            $baseline->unmatched(),
+        );
+    }
+
+    public function testAskingAboutAnUnknownFindingDoesNotMarkAnythingUsed(): void
+    {
+        $baseline = Baseline::empty();
+        $baseline->add($this->finding('n-plus-one', '/project/src/Repo.php', 'select a'));
+
+        $baseline->contains($this->finding('n-plus-one', '/project/src/Repo.php', 'select b'));
+
+        self::assertCount(1, $baseline->unmatched());
+    }
+
     public function testFindingWithoutSignatureIsNeverStored(): void
     {
         $baseline = Baseline::empty();

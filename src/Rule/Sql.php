@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace QueryGuard\Rule;
 
+use QueryGuard\Query\SqlText;
+
 /**
  * Small SQL parsing helpers shared by several rules.
  *
@@ -23,29 +25,10 @@ final class Sql
     private const KEY_LIST = '/\bIN\s*\(\s*(?:\?|:\w+|\$\d+|-?\d+)(?:\s*,\s*(?:\?|:\w+|\$\d+|-?\d+))+\s*\)/i';
 
     /**
-     * A string literal, a block comment or a line comment — whichever opens first.
-     *
-     * One alternation rather than three passes, and that is a correctness requirement
-     * rather than a tidying: see `stripped()`.
-     */
-    private const LITERAL_OR_COMMENT = "#'(?:[^']|'')*'|/\*.*?\*/|--[^\n]*#s";
-
-    /**
      * Any single identifier as a query may spell it — quoted in any of the three
      * dialects, or bare. Used to step over the qualifiers in front of a table name.
      */
     private const IDENTIFIER = '(?:"[^"]*"|`[^`]*`|\[[^\]]*\]|[\w$]+)';
-
-    /**
-     * How many distinct queries to remember before starting the cache over.
-     *
-     * A bound is needed because the key is the raw SQL: a suite building endless
-     * distinct statements would otherwise grow this for the whole run.
-     */
-    private const CACHE_LIMIT = 2000;
-
-    /** @var array<string, string> */
-    private static array $stripped = [];
 
     public static function shorten(string $sql, int $limit = 90): string
     {
@@ -74,6 +57,16 @@ final class Sql
         return 1 === preg_match(self::KEY_LIST, self::stripped($sql));
     }
 
+    /**
+     * Whether a `LIMIT` appears anywhere in the statement.
+     *
+     * Anywhere, and deliberately not "on the outermost SELECT": telling the two apart
+     * needs a parser, and `no-limit` errs towards silence on purpose. A `LIMIT` that only
+     * bounds a subquery therefore hides an unbounded outer read — a false negative. The
+     * alternative is a rule that fires on every windowed query a project has, and a noisy
+     * rule against a `large-tables` list somebody had to write by hand gets switched off
+     * the same week.
+     */
     public static function hasLimit(string $sql): bool
     {
         return 1 === preg_match('/\bLIMIT\b/i', self::stripped($sql));
@@ -144,38 +137,12 @@ final class Sql
     /**
      * The query with comments and string literals taken out.
      *
-     * A literal becomes an empty one rather than disappearing, so the surrounding
-     * structure — and therefore the shape of an `IN` list — survives. Double quotes are
-     * left alone: in PostgreSQL they delimit an identifier, and a table name has to stay
-     * findable for `touchesTable()`. `#` is not treated as a comment either: it is a
-     * MySQL-only spelling that ORMs do not emit, while PostgreSQL uses it inside
-     * operators.
-     *
-     * **One pass, not three.** Stripping comments first and literals afterwards looks
-     * equivalent and is not: `WHERE body = 'a -- b'` loses its closing quote to the
-     * line-comment pass, and nothing after it is recognisable any more. That is not a
-     * cosmetic error — `isBatchFetch()` then answers "no" for a real `IN (?, ?)` list,
-     * and a false negative there is a **false positive in the flagship rule**. A single
-     * alternation scans left to right, so whichever construct opens first wins, which is
-     * how the database reads it too.
-     *
-     * The result is memoised: the helpers above are called once per rule per query, and
-     * `touchesTable()` once per configured table on top of that.
+     * Delegated to `Query\SqlText`, which is also what `Fingerprint` normalises with.
+     * The two used to strip differently, and a query carrying a per-request comment then
+     * had one identity here and another one there.
      */
     private static function stripped(string $sql): string
     {
-        if (\array_key_exists($sql, self::$stripped)) {
-            return self::$stripped[$sql];
-        }
-
-        if (\count(self::$stripped) >= self::CACHE_LIMIT) {
-            self::$stripped = [];
-        }
-
-        return self::$stripped[$sql] = (string) preg_replace_callback(
-            self::LITERAL_OR_COMMENT,
-            static fn (array $match): string => "'" === $match[0][0] ? "''" : ' ',
-            $sql,
-        );
+        return SqlText::stripped($sql);
     }
 }

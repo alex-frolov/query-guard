@@ -55,6 +55,40 @@ final class FingerprintTest extends TestCase
     }
 
     /**
+     * The quietest failure this package had: tracing middleware appends a per-request
+     * comment to every statement, so the same query arrived with a different fingerprint
+     * each time and both grouping rules saw a suite of unique queries.
+     */
+    public function testAPerRequestCommentDoesNotSplitAShape(): void
+    {
+        $first = Fingerprint::of('SELECT * FROM users WHERE id = ? /* trace=abc123 */');
+        $second = Fingerprint::of('SELECT * FROM users WHERE id = ? /* trace=def456 */');
+
+        self::assertTrue($first->equals($second));
+        self::assertTrue($first->equals(Fingerprint::of('SELECT * FROM users WHERE id = ?')));
+    }
+
+    public function testALineCommentIsNotPartOfTheShape(): void
+    {
+        self::assertTrue(
+            Fingerprint::of("-- request 17\nSELECT * FROM users")
+                ->equals(Fingerprint::of("-- request 18\nSELECT * FROM users")),
+        );
+    }
+
+    /**
+     * The same trap `Rule\Sql` guards: stripping comments before literals lets the `--`
+     * inside a string eat its closing quote, and everything after it stops being SQL.
+     */
+    public function testACommentMarkerInsideALiteralIsStillALiteral(): void
+    {
+        self::assertSame(
+            'select * from notes where body = ? and id = ?',
+            Fingerprint::of("SELECT * FROM notes WHERE body = 'a -- b' AND id = 7")->value(),
+        );
+    }
+
+    /**
      * Doctrine's aliases (`id_1`, `name_2`) are not literals: stripping them would
      * collapse different queries into one fingerprint.
      */

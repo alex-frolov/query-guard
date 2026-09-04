@@ -60,24 +60,6 @@ final class Trace
         return \count($this->fixtureEvents);
     }
 
-    public function isEmpty(): bool
-    {
-        return [] === $this->events;
-    }
-
-    public function durationMs(): ?float
-    {
-        $total = null;
-
-        foreach ($this->events as $event) {
-            if (null !== $event->durationMs) {
-                $total = ($total ?? 0.0) + $event->durationMs;
-            }
-        }
-
-        return $total;
-    }
-
     /**
      * Queries grouped by fingerprint — the basis for both deduplication and N+1.
      *

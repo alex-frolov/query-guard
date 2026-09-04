@@ -179,12 +179,73 @@ final class ExecutionFinishedSubscriberTest extends TestCase
         self::assertSame(Mode::Strict, $this->reporter->mode);
     }
 
+    /**
+     * An adapter that collected queries and still has something to say.
+     *
+     * `installationHint()` covers a run that collected nothing. This is the harder case:
+     * the summary is about to look healthy while whole connections went unwatched.
+     */
+    public function testAnAdapterNoticeIsPrintedEvenWhenCollectionWorked(): void
+    {
+        $this->collector->beginFixtures();
+        $this->collector->record(new QueryEvent('SELECT 1'));
+
+        $this->notify(new AdapterSet([
+            new FakeOrmAdapter('fake', true, ['the listener sits on a single connection.']),
+        ]));
+
+        self::assertStringContainsString('the listener sits on a single connection.', $this->notices());
+    }
+
+    /**
+     * A baseline only ever grows otherwise: the finding gets fixed, the entry stays, and
+     * from then on the file silences something that no longer exists.
+     */
+    public function testBaselineEntriesThatSilencedNothingAreReported(): void
+    {
+        $baseline = Baseline::empty();
+        $baseline->add($this->finding());
+
+        $this->notify($this->adapters(), baseline: $baseline);
+
+        self::assertStringContainsString('1 baseline entries silenced nothing', $this->notices());
+        self::assertStringContainsString('After a filtered run', $this->notices());
+    }
+
+    public function testAFullySpentBaselineIsNotMentioned(): void
+    {
+        $finding = $this->finding();
+
+        $baseline = Baseline::empty();
+        $baseline->add($finding);
+        $baseline->contains($finding);
+
+        $this->notify($this->adapters(), baseline: $baseline);
+
+        self::assertStringNotContainsString('silenced nothing', $this->notices());
+    }
+
+    /**
+     * While the baseline is being regenerated nothing is matched against it, so every
+     * entry would look unused.
+     */
+    public function testRegenerationDoesNotAccuseTheBaselineOfBeingStale(): void
+    {
+        $baseline = Baseline::empty();
+        $baseline->add($this->finding());
+
+        $this->notify($this->adapters(), generated: Baseline::empty(), baseline: $baseline);
+
+        self::assertStringNotContainsString('silenced nothing', $this->notices());
+    }
+
     private function notify(
         AdapterSet $adapters,
         Mode $mode = Mode::Report,
         ?Baseline $generated = null,
         string $baselinePath = '',
         ?Tier2Factory $tier2 = null,
+        ?Baseline $baseline = null,
     ): void {
         (new ExecutionFinishedSubscriber(
             $this->report,
@@ -195,6 +256,8 @@ final class ExecutionFinishedSubscriberTest extends TestCase
             $generated,
             $baselinePath,
             $tier2,
+            Severity::Warning,
+            $baseline,
         ))->notify(Events::executionFinished());
     }
 

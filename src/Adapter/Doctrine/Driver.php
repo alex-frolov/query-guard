@@ -28,12 +28,16 @@ final class Driver extends AbstractDriverMiddleware
         #[\SensitiveParameter]
         array $params,
     ): DriverConnection {
-        $connectionName = self::nameOf($params);
         /** @phpstan-ignore argument.type (DBAL describes connection parameters with a
          *  strict array shape; a decorator is fine with whatever it was handed) */
         $wrapped = parent::connect($params);
 
-        DoctrineAdapter::markConnected($connectionName, self::platformOf($params), $wrapped);
+        $connectionName = DoctrineAdapter::register(
+            self::nameOf($params),
+            self::endpointOf($params),
+            self::platformOf($params),
+            $wrapped,
+        );
 
         return Dbal::isVersion4()
             ? new Dbal4\Connection($wrapped, $this->recorder, $connectionName)
@@ -65,6 +69,8 @@ final class Driver extends AbstractDriverMiddleware
     }
 
     /**
+     * The name a developer would recognise: the database, nothing else.
+     *
      * @param array<string, mixed> $params
      */
     private static function nameOf(array $params): string
@@ -72,5 +78,31 @@ final class Driver extends AbstractDriverMiddleware
         $database = $params['dbname'] ?? $params['path'] ?? null;
 
         return \is_string($database) && '' !== $database ? $database : 'default';
+    }
+
+    /**
+     * What actually identifies a database, as opposed to what it is called.
+     *
+     * A primary and its replica share a `dbname` and differ in host; two tenants may
+     * share a host and differ in user. `DoctrineAdapter::register()` keys by this and
+     * labels by `nameOf()`, so the common single-database project keeps a readable name
+     * and a genuine second database still gets its own entry.
+     *
+     * Two in-memory SQLite connections are indistinguishable here, and that is accepted:
+     * they carry no identity in their parameters at all, and tier 2 does not support
+     * SQLite in any case.
+     *
+     * @param array<string, mixed> $params
+     */
+    private static function endpointOf(array $params): string
+    {
+        $parts = [self::nameOf($params)];
+
+        foreach (['host', 'port', 'user', 'unix_socket'] as $key) {
+            $value = $params[$key] ?? null;
+            $parts[] = \is_scalar($value) ? (string) $value : '';
+        }
+
+        return implode('|', $parts);
     }
 }

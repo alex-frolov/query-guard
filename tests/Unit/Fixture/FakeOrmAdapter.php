@@ -19,9 +19,14 @@ final class FakeOrmAdapter implements OrmAdapter
 {
     public int $installations = 0;
 
+    /**
+     * @param list<string> $notices what the adapter has to say about a run that did
+     *                              collect something — see `OrmAdapter::notices()`
+     */
     public function __construct(
         private readonly string $name = 'fake',
         private readonly bool $installed = true,
+        private readonly array $notices = [],
     ) {
     }
 
@@ -53,5 +58,10 @@ final class FakeOrmAdapter implements OrmAdapter
     public function installationHint(): string
     {
         return sprintf('%s: put the middleware in the test configuration.', $this->name);
+    }
+
+    public function notices(): array
+    {
+        return $this->notices;
     }
 }

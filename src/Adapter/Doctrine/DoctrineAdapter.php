@@ -25,7 +25,7 @@ use QueryGuard\Collector\QueryCollector;
 final class DoctrineAdapter implements OrmAdapter
 {
     /**
-     * Every connection that has been opened, keyed by name.
+     * Every connection that has been opened, keyed by the name it is known under.
      *
      * A map rather than "the last one": EXPLAIN has to go through the connection that
      * ran the query. A single static used to hold whichever connected most recently, so
@@ -36,22 +36,74 @@ final class DoctrineAdapter implements OrmAdapter
      */
     private static array $connections = [];
 
+    /**
+     * Endpoint → the name it was given. See `register()`.
+     *
+     * @var array<string, string>
+     */
+    private static array $names = [];
+
+    /**
+     * Names that had to be disambiguated, and the endpoints behind them.
+     *
+     * @var array<string, string>
+     */
+    private static array $collisions = [];
+
     public static function supports(): bool
     {
         return interface_exists(MiddlewareInterface::class);
     }
 
     /**
-     * Called from `Driver::connect()`: before the first connection there is no fact to report.
+     * Records an opened connection and answers with the name it is known under.
+     *
+     * Called from `Driver::connect()`: before the first connection there is no fact to
+     * report.
+     *
+     * **The label and the endpoint are two different things, and conflating them lost
+     * connections.** The label is what a developer recognises — the database name — and
+     * it is what the summary prints. The endpoint is the whole of `dbname`, host, port
+     * and user, which is what actually identifies a database. A primary and a replica
+     * carry one label and two endpoints; keying by the label alone meant the second
+     * overwrote the first, and tier 2 then explained the replica's queries against the
+     * primary. Keying by the endpoint alone would print `shop|10.0.0.4|3306` in every
+     * notice for the overwhelmingly common project that has exactly one database.
+     *
+     * So: the label is used as the name while it is free, a second endpoint claiming it
+     * becomes `shop#2`, and the fact that this happened reaches the summary. Reconnecting
+     * the same endpoint keeps the name it already had — DBAL reconnects, and a run must
+     * not accumulate a new connection per reconnect.
      */
-    public static function markConnected(string $connectionName, string $platform = 'unknown', ?object $connection = null): void
+    public static function register(string $label, string $endpoint, string $platform = 'unknown', ?object $connection = null): string
     {
-        self::$connections[$connectionName] = ['connection' => $connection, 'platform' => $platform];
+        $entry = ['connection' => $connection, 'platform' => $platform];
+
+        if (isset(self::$names[$endpoint])) {
+            $name = self::$names[$endpoint];
+            self::$connections[$name] = $entry;
+
+            return $name;
+        }
+
+        $name = '' === $label ? 'default' : $label;
+
+        for ($suffix = 2; isset(self::$connections[$name]); ++$suffix) {
+            $name = $label.'#'.$suffix;
+            self::$collisions[$name] = $label;
+        }
+
+        self::$names[$endpoint] = $name;
+        self::$connections[$name] = $entry;
+
+        return $name;
     }
 
     public static function reset(): void
     {
         self::$connections = [];
+        self::$names = [];
+        self::$collisions = [];
     }
 
     public function name(): string
@@ -86,5 +138,21 @@ final class DoctrineAdapter implements OrmAdapter
     {
         return 'Doctrine: add QueryGuard\Adapter\Doctrine\Middleware tagged doctrine.middleware '
             .'to your test configuration — the middleware has to be there before the connection is created.';
+    }
+
+    public function notices(): array
+    {
+        $notices = [];
+
+        foreach (self::$collisions as $name => $label) {
+            $notices[] = sprintf(
+                "two connections answer to the database name \"%s\", so the second one is reported as \"%s\".\n"
+                .'They are separate databases — different host, port or user — and each is explained against itself.',
+                $label,
+                $name,
+            );
+        }
+
+        return $notices;
     }
 }

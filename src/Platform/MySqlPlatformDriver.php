@@ -65,7 +65,7 @@ final class MySqlPlatformDriver implements PlatformDriver
         $nodes = [];
         $this->walk($block, $nodes, false, false);
 
-        return new Plan($this->name(), $nodes, Json::float(Json::object($block, 'cost_info'), 'query_cost'));
+        return new Plan($this->name(), $nodes);
     }
 
     /**

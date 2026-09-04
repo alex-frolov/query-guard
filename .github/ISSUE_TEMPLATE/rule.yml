@@ -1,0 +1,69 @@
+name: Rule proposal
+description: A pattern query-guard should recognise
+labels: ['rule']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A rule earns its place by being *decidable from a trace* and *quiet when it
+        cannot judge*. The questions below are the ones that decide it, and a proposal
+        that cannot answer them is usually a rule that will be switched off within a week
+        of being enabled.
+
+  - type: textarea
+    id: pattern
+    attributes:
+      label: The pattern
+      description: What a run would have to look like for this rule to fire.
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: What the rule decides on
+      description: >-
+        Tier 1 sees the trace: the statements, their order, the bound values, the
+        callsite. Tier 2 additionally sees the query plan, and only on MySQL/MariaDB and
+        PostgreSQL. If the pattern needs something else — the schema, the application's
+        intent — say so; that is not a refusal, it is the hard part.
+    validations:
+      required: true
+
+  - type: textarea
+    id: false-positives
+    attributes:
+      label: What would look identical and be fine
+      description: >-
+        The most useful part of the proposal. `n-plus-one` ignores writes because a
+        fixture factory is 50 identical INSERTs from one callsite; plan rules stay silent
+        below `min-rows` because a small table's estimate lies.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity it would report
+      description: >-
+        The scale is certainty, not cost. `error` means proved, `warning` means a
+        heuristic fired, `info` means a style note nobody should fail a build over.
+      options:
+        - 'error — proved, not inferred'
+        - 'warning — a heuristic fired'
+        - 'info — a style note'
+    validations:
+      required: true
+
+  - type: dropdown
+    id: default
+    attributes:
+      label: On by default?
+      description: >-
+        A rule that is noisy on an ordinary project stays off until configured —
+        `select-star`, `no-limit` and `query-count` all do.
+      options:
+        - 'On — quiet on a healthy project'
+        - 'Off until configured'
+    validations:
+      required: true

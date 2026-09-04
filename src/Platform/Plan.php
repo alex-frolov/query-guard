@@ -20,7 +20,6 @@ final readonly class Plan
     public function __construct(
         public string $platform,
         public array $nodes,
-        public ?float $cost = null,
         public string $connection = '',
     ) {
     }
@@ -32,27 +31,11 @@ final readonly class Plan
 
     public function onConnection(string $connection): self
     {
-        return new self($this->platform, $this->nodes, $this->cost, $connection);
+        return new self($this->platform, $this->nodes, $connection);
     }
 
     public function isEmpty(): bool
     {
         return [] === $this->nodes;
-    }
-
-    /**
-     * @return int|null null when no node reported an estimate
-     */
-    public function estimatedRows(): ?int
-    {
-        $total = null;
-
-        foreach ($this->nodes as $node) {
-            if (null !== $node->estimatedRows) {
-                $total = ($total ?? 0) + $node->estimatedRows;
-            }
-        }
-
-        return $total;
     }
 }

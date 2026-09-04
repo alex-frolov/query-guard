@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace QueryGuard\Adapter\Eloquent;
 
+use Illuminate\Contracts\Container\Container;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Support\Facades\DB;
@@ -33,6 +34,15 @@ use QueryGuard\QueryGuard;
  * 3. `Test\PreparationStarted` — for unusual suites where the application outlives a test.
  *
  * Repeated attempts are safe: the same application is subscribed only once.
+ *
+ * **The dispatcher is looked for before anything else.** `DB::getFacadeRoot()` hands back
+ * a `DatabaseManager`, which has no `listen()` of its own: the call goes through
+ * `__call` and lands on the default connection, covering that one and nothing else. That
+ * is a subscription which succeeds, reports itself installed, and silently misses every
+ * secondary connection — the exact shape of failure this package exists to refuse. So the
+ * resolver asks the container for `events` first, then the manager for the dispatcher its
+ * connections share, and only then falls back to a connection-level `listen()` — which
+ * says out loud, in the summary, how much of the project it can see.
  */
 final class EloquentAdapter implements OrmAdapter
 {
@@ -40,6 +50,14 @@ final class EloquentAdapter implements OrmAdapter
     private static ?\WeakMap $subscribed = null;
 
     private static bool $attached = false;
+
+    /**
+     * Set when the only subscription available reached a single connection.
+     *
+     * Kept apart from `$attached`: the run does collect queries, so nothing in the
+     * summary would otherwise suggest that whole connections went unwatched.
+     */
+    private static bool $singleConnectionOnly = false;
 
     /**
      * @param object|null $resolver a connection manager or a connection itself;
@@ -98,8 +116,10 @@ final class EloquentAdapter implements OrmAdapter
         if ($target instanceof Dispatcher) {
             $target->listen(QueryExecuted::class, $listener);
         } elseif (\is_callable([$target, 'listen'])) {
-            // a connection or a connection manager — covers one connection only
+            // a connection, or a manager forwarding through `__call` to the default
+            // connection — either way this covers one connection and no other
             $target->listen($listener);
+            self::$singleConnectionOnly = true;
         } else {
             return false;
         }
@@ -113,6 +133,7 @@ final class EloquentAdapter implements OrmAdapter
     {
         self::$subscribed = null;
         self::$attached = false;
+        self::$singleConnectionOnly = false;
     }
 
     public function name(): string
@@ -148,6 +169,20 @@ final class EloquentAdapter implements OrmAdapter
             .'check that the package is not excluded from package discovery in composer.json (extra.laravel.dont-discover).';
     }
 
+    public function notices(): array
+    {
+        if (!self::$singleConnectionOnly) {
+            return [];
+        }
+
+        return [
+            "Eloquent: no event dispatcher could be reached, so the listener sits on a single connection.\n"
+            .'Queries on every other connection were not seen at all — this is not "all clear". '
+            .'QueryGuardServiceProvider subscribes to the dispatcher and covers them all; check that the '
+            .'package is not excluded from package discovery in composer.json (extra.laravel.dont-discover).',
+        ];
+    }
+
     private function resolve(): ?object
     {
         if (null !== $this->resolver) {
@@ -164,6 +199,50 @@ final class EloquentAdapter implements OrmAdapter
             return null;
         }
 
-        return \is_object($root) ? $root : null;
+        if (!\is_object($root)) {
+            return null;
+        }
+
+        return self::dispatcherBehind($root) ?? $root;
+    }
+
+    /**
+     * The dispatcher a connection manager's connections publish to.
+     *
+     * Two ways in, because a `Manager` outside Laravel has no container: the application
+     * container the facade is bound to, and the manager itself — `getEventDispatcher()`
+     * reaches the default connection through `__call`, and every connection of that
+     * manager shares the object it returns. Subscribing there covers connections opened
+     * later, which is the whole reason to prefer it.
+     */
+    private static function dispatcherBehind(object $root): ?Dispatcher
+    {
+        try {
+            $application = DB::getFacadeApplication();
+
+            if ($application instanceof Container && $application->bound('events')) {
+                $events = $application->make('events');
+
+                if ($events instanceof Dispatcher) {
+                    return $events;
+                }
+            }
+        } catch (\Throwable) {
+            // no container, or nothing bound under `events` — the manager is next
+        }
+
+        try {
+            if (\is_callable([$root, 'getEventDispatcher'])) {
+                $events = $root->getEventDispatcher();
+
+                if ($events instanceof Dispatcher) {
+                    return $events;
+                }
+            }
+        } catch (\Throwable) {
+            // a manager with no connection configured yet answers by throwing
+        }
+
+        return null;
     }
 }

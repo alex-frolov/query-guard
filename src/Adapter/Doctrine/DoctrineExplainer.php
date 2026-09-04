@@ -36,7 +36,7 @@ final class DoctrineExplainer implements Explainer
 
         $statement = $this->connection->prepare($sql);
 
-        foreach ($params as $key => $value) {
+        foreach (self::rebased($params) as $key => $value) {
             // Calling bindValue is compatible with DBAL 3 and 4 — only the signatures
             // diverge when overriding, not when calling (see Dbal3\Statement / Dbal4\Statement).
             //
@@ -57,5 +57,41 @@ final class DoctrineExplainer implements Explainer
         }
 
         return $statement->execute()->fetchAllAssociative();
+    }
+
+    /**
+     * Positional parameters counted from one, the way the drivers require.
+     *
+     * DBAL binds them that way itself, so the values a statement collected normally
+     * arrive correct. Not always, though: `Dbal3\Statement::execute($params)` — the
+     * deprecated but still reachable path — hands over whatever the caller passed, and
+     * that is a zero-indexed list. `bindValue(0, ...)` is then rejected outright, the
+     * EXPLAIN lands in the "failed" counter, and the reported reason has nothing to do
+     * with the query under study. Named parameters are left exactly as they are.
+     *
+     * @param array<array-key, mixed> $params
+     *
+     * @return array<array-key, mixed>
+     */
+    private static function rebased(array $params): array
+    {
+        if (!\array_key_exists(0, $params)) {
+            return $params;
+        }
+
+        foreach (array_keys($params) as $key) {
+            if (!\is_int($key)) {
+                // mixed keys are not something to guess about
+                return $params;
+            }
+        }
+
+        $rebased = [];
+
+        foreach (array_values($params) as $index => $value) {
+            $rebased[$index + 1] = $value;
+        }
+
+        return $rebased;
     }
 }

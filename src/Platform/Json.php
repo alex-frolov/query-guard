@@ -76,16 +76,6 @@ final class Json
     /**
      * @param array<array-key, mixed> $node
      */
-    public static function float(array $node, string $key): ?float
-    {
-        $value = $node[$key] ?? null;
-
-        return is_numeric($value) ? (float) $value : null;
-    }
-
-    /**
-     * @param array<array-key, mixed> $node
-     */
     public static function bool(array $node, string $key): bool
     {
         return ($node[$key] ?? false) === true;

@@ -57,4 +57,18 @@ interface OrmAdapter
      * be specific — otherwise "it does not work" turns into "no idea what to fix".
      */
     public function installationHint(): string;
+
+    /**
+     * Anything the adapter needs to say about a run that otherwise looks fine.
+     *
+     * `installationHint()` covers the case where nothing was collected at all. This
+     * covers the harder one: collection worked, the summary is about to look healthy, and
+     * something is nevertheless missing — a listener that reached only the default
+     * connection, two databases sharing a name. Those are printed unconditionally, next
+     * to the findings, because a partial trace and a clean one produce the same "no
+     * findings" line otherwise.
+     *
+     * @return list<string>
+     */
+    public function notices(): array;
 }

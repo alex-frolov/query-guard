@@ -1,0 +1,83 @@
+name: Bug report
+description: query-guard behaved differently from what is documented
+labels: ['bug']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Two categories of report are worth separating here, because they need different
+        information:
+
+        - **A wrong finding** — reported, missed, or reported for the wrong reason.
+          The trace is what decides it, so the SQL matters more than the code.
+        - **Nothing collected at all** — the summary itself usually says why. Paste it
+          before anything else; the notice under `tests traced:` is normally the answer.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: The query-guard summary
+      description: >-
+        Everything printed under `query-guard` at the end of the run, including the
+        notices. This is the single most useful thing in the report — the counters at the
+        top say whether anything was collected at all.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected instead
+      description: >-
+        For a wrong finding, say which rule and why the queries are not what it claims.
+        `n-plus-one`, `duplicate-query` and `query-in-loop` describe three different
+        situations — see the README section on reading them.
+    validations:
+      required: true
+
+  - type: textarea
+    id: queries
+    attributes:
+      label: The queries involved
+      description: >-
+        The SQL as it appears in the finding, and roughly what the code around it does.
+        Strip anything confidential — the shape is what matters, not the values.
+      render: sql
+
+  - type: textarea
+    id: config
+    attributes:
+      label: The extension block from phpunit.xml
+      render: xml
+    validations:
+      required: true
+
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: >-
+        PHP, PHPUnit, query-guard, and the ORM — `composer show phpunit/phpunit
+        alex-frolov/query-guard doctrine/orm doctrine/dbal illuminate/database | head`
+      placeholder: 'PHP 8.3, PHPUnit 11.5, query-guard 0.1.0, Doctrine ORM 3.3 / DBAL 4.2'
+    validations:
+      required: true
+
+  - type: input
+    id: database
+    attributes:
+      label: Database
+      description: Only needed for a tier 2 finding, where the platform decides the answer.
+      placeholder: 'PostgreSQL 17, ~2M rows in the table concerned'
+
+  - type: checkboxes
+    id: checked
+    attributes:
+      label: Before reporting
+      options:
+        - label: >-
+            I read the notices in the summary — `When query-guard stays silent` in the
+            README lists every case where the tool deliberately says nothing.
+        - label: >-
+            The finding is not silenced by a baseline entry, and not a rule I turned off.

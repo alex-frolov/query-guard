@@ -14,8 +14,9 @@ Install it, add six lines to `phpunit.xml`, and run your suite as usual. No asse
 in your tests, no separate command, no code changes.
 
 > **Status: 0.1.0, the first public release.** Everything documented below works and is
-> covered by tests (154 of them, on PHPUnit 10.5–13, Doctrine ORM 2–3, DBAL 3–4, MySQL
-> and PostgreSQL). The API may still shift before 1.0.
+> covered by tests, run on PHPUnit 10.5–13, Doctrine ORM 2–3, DBAL 3–4, MySQL and
+> PostgreSQL. The API may still shift before 1.0 — see
+> [UPGRADING.md](UPGRADING.md) for what has moved so far.
 
 ## What it looks like
 
@@ -199,6 +200,9 @@ design:
 | `temporary-table` on PostgreSQL | same |
 | **`--no-output`** | nothing: the extension does not load at all |
 | **A table below `min-rows`** | nothing: plan rules deliberately do not judge small tables |
+| Eloquent listener that reached one connection | the summary says which, and how to cover the rest |
+| Two Doctrine connections sharing a database name | both are kept; the second is renamed and the rename is announced |
+| Baseline entries that silenced nothing | counted, with what that means after a filtered run |
 | **`#[IgnoreRule]` / a baseline entry** | the baseline count is shown; a per-test ignore is not |
 
 Two more worth knowing:
@@ -208,7 +212,15 @@ Two more worth knowing:
   quietly substitute. Tier 1 works fully.
 - **Queries made in `setUp()` are not analysed.** They are counted and shown separately
   (`in setUp: N`). That is the decision the whole false-positive story rests on — a
-  factory creating 50 rows in a loop is 50 identical INSERTs from one callsite.
+  factory creating 50 rows in a loop is 50 identical INSERTs from one callsite. The
+  `max-queries` budget is charged against the test body for the same reason.
+- **Under a parallel runner every worker is its own run.** ParaTest starts a process per
+  worker, and query-guard has no way to see across them: each prints its own summary,
+  keeps its own counters, and in `strict` mode fails its own process. Findings are still
+  correct — a trace never spans workers — but "findings: 3" printed four times is four
+  partial reports, not twelve findings. Point `report-json` at a per-worker path
+  (`var/query-guard-$TEST_TOKEN.json`) and merge them, or run query-guard in a
+  sequential job of its own.
 
 ## What it costs
 
@@ -251,6 +263,84 @@ baseline for nothing. Paths in the file are relative, so it survives the trip to
 
 The summary always reports how many findings the baseline silenced.
 
+### What is in the file
+
+```json
+{
+    "generated-at": "2026-09-03T10:12:00+00:00",
+    "comment": "query-guard baseline: the findings listed here do not fail the run...",
+    "findings": {
+        "n-plus-one|src/Entity/Timesheet.php|select t0.id from tags t0 where t0.id = ?": {
+            "rule": "n-plus-one",
+            "place": "src/Entity/Timesheet.php:418",
+            "sample": "App\\Entity\\Timesheet::$tags — lazy-loaded association, 10 queries"
+        }
+    }
+}
+```
+
+The **key** is what silences a finding; everything under it is there so the file can be
+read in a pull request. `place` carries the line number the key deliberately leaves out,
+and `sample` is the message as it was when the entry was written — neither is matched
+against, and neither is refreshed. Delete a key by hand to start failing on it again;
+editing `place` or `sample` changes nothing.
+
+### Entries that outlive their findings
+
+Fix a finding and its baseline entry stays behind, silencing something that no longer
+exists — including, in time, a fresh regression that lands on the same rule in the same
+file. So a run reports how many entries matched nothing:
+
+```
+  ! 4 baseline entries silenced nothing in this run.
+    After a full-suite run they are obsolete: regenerate with QUERY_GUARD_GENERATE_BASELINE=1 to drop them.
+    After a filtered run it only means those tests did not execute.
+```
+
+The distinction is the whole point of the wording. `--filter`, `--exclude-group`, a
+sharded CI job — all of them leave entries unmatched without anything being stale.
+Regenerate from a full run or not at all.
+
+## Machine-readable report
+
+The summary above is written to be read by a person, which means it will be reworded.
+Anything automated should read this instead:
+
+```xml
+<parameter name="report-json" value="var/query-guard.json"/>
+```
+
+```json
+{
+    "generated-at": "2026-09-03T10:12:00+00:00",
+    "mode": "strict",
+    "fail-on": "warning",
+    "failing": true,
+    "summary": {"tests": 404, "queries": 25736, "fixture-queries": 0, "suppressed": 0, "findings": 207},
+    "notices": ["tier 2: 118 plans parsed, 0 failed."],
+    "findings": [
+        {
+            "rule": "n-plus-one",
+            "severity": "error",
+            "test": "App\\Tests\\Controller\\TimesheetControllerTest::testExportAction",
+            "class": "App\\Tests\\Controller\\TimesheetControllerTest",
+            "method": "testExportAction",
+            "message": "App\\Entity\\Timesheet::$tags — lazy-loaded association, 10 queries",
+            "file": "src/Entity/Timesheet.php",
+            "line": 418,
+            "count": 10,
+            "signature": "n-plus-one|src/Entity/Timesheet.php|select t0.id from tags t0 where t0.id = ?"
+        }
+    ]
+}
+```
+
+Paths are relative to the working directory, so the file survives the trip to CI.
+`failing` answers the only question a CI script usually has — whether this run is about to
+exit non-zero — without it having to reimplement the `fail-on` comparison. The console
+summary is never replaced by the file: a run that writes a report and prints nothing is a
+run whose findings nobody sees.
+
 ## Per-test overrides
 
 ```php
@@ -262,7 +352,21 @@ use QueryGuard\Attribute\IgnoreRule;
 public function testImportsLargeFile(): void
 ```
 
-Both work on the class as well as the method.
+Both work on the class as well as the method. `#[IgnoreRule]` is repeatable, and a method
+adds to whatever its class already ignores; `#[AllowQueries]` on a method replaces the
+class-level budget rather than adding to it.
+
+Where a callsite lands inside a framework your project happens to vendor, and no
+`#[IgnoreRule]` will help because the rule is right and the file is not yours, add the
+package to `skip-paths`:
+
+```xml
+<parameter name="skip-paths" value="vendor/api-platform,vendor/sonata-project"/>
+```
+
+Those are path fragments, not regular expressions, and they are added to the built-in
+list (PHPUnit, Doctrine, Symfony, Laravel, Illuminate, Composer) rather than replacing
+it. The first frame outside every listed path is what a finding points at.
 
 ## Configuration
 
@@ -274,11 +378,13 @@ Both work on the class as well as the method.
 | `n-plus-one-threshold` | Repeats before it counts as N+1 | `3` |
 | `duplicate-threshold` | Repeats before it counts as a duplicate | `5` |
 | `query-in-loop-threshold` | Queries from one place before it looks like a loop | `5` |
-| `max-queries` | Query budget per test | not set, rule silent |
+| `max-queries` | Query budget per test body — `setUp()` is counted separately and never charged to it | not set, rule silent |
 | `large-tables` | Comma-separated tables for `no-limit`; a bare name matches the table in any schema, a qualified one (`public.orders`) only in that schema | not set, rule silent |
 | `select-star` | Enable `select-star` | `false` |
 | `tier2` | Enable plan rules | `false` |
 | `min-rows` | Table size below which plan rules do not judge | `1000` |
+| `skip-paths` | Comma-separated path fragments a callsite is never blamed on — your own framework packages, on top of the built-in list | not set |
+| `report-json` | Where to write the machine-readable report; the console summary is printed either way | not set, nothing written |
 
 **`fail-on` reads the severity scale.** `[error]` means the adapter recognised lazy
 loading and named the association; `[warning]` that only the shape heuristic fired;
@@ -331,6 +437,95 @@ values — and it is worth a look but not a certainty.
 what to fix. See [When query-guard stays silent](#when-query-guard-stays-silent).
 
 When you are ready to hold the whole suite to this, read on.
+
+### Reading the three grouping rules
+
+`n-plus-one`, `duplicate-query` and `query-in-loop` all say "the same place ran a lot of
+queries", and they are three different diagnoses with three different fixes. The
+distinction is what the finding turns on:
+
+| What the trace looks like | Rule | What it means | The fix |
+|---|---|---|---|
+| One shape, one place, **values differ** | `n-plus-one` | A row at a time out of a loop or a lazy association | Fetch the set in one query: a `JOIN`, an `IN (...)`, eager loading |
+| One shape, one place, **values identical** | `duplicate-query` | The first answer was thrown away | Keep the result, or put it behind a cache. Nothing about the query itself is wrong |
+| **Several shapes**, one place | `query-in-loop` | Different work per iteration — an entity loaded, then its settings, then its owner | Usually one restructure upstream, not three fixes |
+
+Two rules never fire on the same queries: `n-plus-one` requires the bound values to
+differ, `duplicate-query` requires them to match, and `query-in-loop` stands down when a
+group has only one shape. If you are looking at all three on one line of code, they are
+describing three different sets of queries that happen to leave from it.
+
+Severity is the second half of the message and means certainty, not cost. `[error]` on
+`n-plus-one` is the adapter having recognised Doctrine lazy initialisation and named the
+association — there is nothing left to guess. `[warning]` is the shape heuristic alone.
+
+### Fixing an N+1 once you have found one
+
+The finding gives you a file, a line and a shape. What it cannot tell you is which of
+three fixes applies, because that depends on what the code is doing with the rows.
+
+**Doctrine — a lazy association walked in a loop.** The usual case, and the one that gets
+reported as `[error]` with the association named:
+
+```php
+// before: one query for the timesheets, then one per timesheet for its tags
+foreach ($repository->findBy(['user' => $user]) as $timesheet) {
+    $names[] = implode(', ', $timesheet->getTags()->map(fn (Tag $t) => $t->getName())->toArray());
+}
+
+// after: the association is fetched with the parent, in one query
+$timesheets = $repository->createQueryBuilder('t')
+    ->addSelect('tags')          // without addSelect the join filters but does not hydrate
+    ->leftJoin('t.tags', 'tags')
+    ->where('t.user = :user')->setParameter('user', $user)
+    ->getQuery()->getResult();
+```
+
+`addSelect` is the whole trick, and leaving it out is the most common way this "fix"
+changes nothing: a `leftJoin` alone still leaves the collection lazy. Do not reach for
+`fetch: 'EAGER'` on the mapping instead — it makes every read of that entity anywhere in
+the application pay for the association.
+
+**Doctrine — many entities by id, not through an association:**
+
+```php
+// before: findOneBy in a loop
+foreach ($ids as $id) { $orders[] = $repository->find($id); }
+
+// after: one query, indexed for lookup
+$orders = $repository->createQueryBuilder('o')
+    ->where('o.id IN (:ids)')->setParameter('ids', $ids)
+    ->indexBy('o', 'o.id')
+    ->getQuery()->getResult();
+```
+
+query-guard skips `IN (?, ?, ?)` on purpose — a batch fetch is the cure, so the rule must
+not report the fix as the disease.
+
+**Eloquent:**
+
+```php
+// before
+foreach (Order::all() as $order) { $total += $order->items->sum('price'); }
+
+// after — eager load with the parent query
+foreach (Order::with('items')->get() as $order) { $total += $order->items->sum('price'); }
+
+// or, when the collection already exists
+$orders->load('items');
+```
+
+**Then check it.** Re-run the one test and read the summary, rather than assuming:
+
+```bash
+vendor/bin/phpunit --filter testExportAction
+```
+
+The finding disappears and the query count drops. If the count did not drop, the fix did
+not fire — an unhydrated join, or a lazy load that moved rather than went away. If a
+`duplicate-query` finding appeared where the `n-plus-one` was, the loop is now asking one
+query repeatedly instead of one per row: nearly there, and the remaining fix is to keep
+the result rather than to change the query.
 
 ### Adopting on a legacy project
 
@@ -531,6 +726,139 @@ where the rot starts.
 On a new project the baseline is optional — every finding is fresh enough to fix. If the
 suite ever outgrows that, the `baseline` parameter is right there.
 
+### Running it in CI
+
+The extension needs no CI job of its own — it rides along with the suite you already run.
+What CI adds is somewhere to put the report and a rule about the baseline.
+
+**1. Write the machine-readable report and keep it:**
+
+```yaml
+- name: Tests
+  run: vendor/bin/phpunit
+
+- name: Keep the query-guard report
+  if: always()          # a `strict` failure is exactly when you want the file
+  uses: actions/upload-artifact@v4
+  with:
+    name: query-guard
+    path: var/query-guard.json
+```
+
+with `<parameter name="report-json" value="var/query-guard.json"/>` in `phpunit.xml`. The
+`if: always()` is the point of the step: without it the artifact is uploaded only on the
+runs where nobody needs it.
+
+**2. Never set `QUERY_GUARD_GENERATE_BASELINE` in CI.** With it on, the run always passes
+and always rewrites the baseline. It is the quietest possible way to switch the tool off
+for good — quieter than removing it, because the job stays green and the file keeps
+changing. Regeneration is a local command, and its output is a reviewed commit.
+
+**3. Review the baseline diff like code.** A pull request that adds entries is a pull
+request that ships known problems, and the diff says exactly which:
+
+```diff
++        "n-plus-one|src/Repository/OrderRepository.php|select t0.id from items t0 where t0.order_id = ?": {
++            "rule": "n-plus-one",
++            "place": "src/Repository/OrderRepository.php:88",
+```
+
+Sometimes that is the right call — a deadline, a refactor already scheduled. The value is
+that it was a call, made by a named reviewer, rather than a rule quietly not firing.
+
+**4. Read the counts, not just the exit code.** `tests traced: 0` or `queries: 0` is a
+green build that checked nothing, and it looks identical to a clean one unless somebody
+reads the two numbers at the top of the summary. The JSON carries them under `summary`,
+which is the easier thing to assert on.
+
+### A project with several databases
+
+Tier 2 handles connections separately by design: each is explained by itself, through the
+connection that ran the query, with its own platform driver. What that needs from you is
+mostly a way to check that it happened.
+
+**Which connections were seen.** The summary names every one it had to skip, and why:
+
+```
+  ! the "analytics" connection runs on "clickhouse", which tier 2 does not support — its
+    queries were not explained.
+    Supported: MySQL/MariaDB and PostgreSQL. Other connections are unaffected.
+
+  ! tier 2: 118 plans parsed, 0 failed.
+```
+
+`0 failed` next to a plausible number of plans is what a working tier 2 looks like. A
+large `failed` count usually means EXPLAIN is being refused rather than misparsed —
+permissions, or a statement the platform will not explain.
+
+**Connections are named after their database.** Two entries pointing at the same `dbname`
+— a primary and a read replica, most often — are told apart by host, port and user, and
+the second is reported under a suffixed name:
+
+```
+  ! two connections answer to the database name "shop", so the second one is reported as "shop#2".
+    They are separate databases — different host, port or user — and each is explained against itself.
+```
+
+Nothing is lost when that happens, but the name in the summary is one you never
+configured. If that matters, give the replica its own database name, or read the notice
+as the mapping it is.
+
+**Eloquent has no tier 2 at all.** `QueryExecuted` gives no access to a connection on
+which `EXPLAIN` could run inside the same transaction. Tier 1 works fully on every
+connection — provided the listener reached the dispatcher rather than a single
+connection, which the summary also says.
+
+### Keeping a baseline healthy through a refactor
+
+A baseline entry is keyed by `rule|file|fingerprint`. The line number is deliberately not
+in there, so ordinary edits cost nothing — but the **file** is, and the fingerprint is the
+normalised SQL. Two refactors therefore move entries:
+
+- **moving or renaming a file** — every entry pointing into it stops matching, and its
+  findings come back as new;
+- **changing the query itself** — a new column in the `SELECT` is a new fingerprint, even
+  though the N+1 is the same one.
+
+Both look identical from the outside: findings reappear in code you did not think you had
+touched, and the same number of entries starts reporting that it silenced nothing.
+
+The fix is the same in both cases and it is deliberately blunt — regenerate from a full
+run and read the diff:
+
+```bash
+QUERY_GUARD_GENERATE_BASELINE=1 vendor/bin/phpunit
+git diff --stat tests/query-guard-baseline.json
+```
+
+What the diff should show is entries **moving**: the same count out and back, under new
+keys. A regeneration that adds more than it removes has recorded something new as
+pre-existing, which is the one thing a baseline must not do — check what appeared before
+committing.
+
+Do not hand-edit keys to follow a moved file. A key is derived, and a hand-written one
+that is subtly wrong silences nothing while looking like it does; deleting entries by
+hand is fine, because deleting can only make the tool stricter.
+
+### With dama/doctrine-test-bundle and transactional tests
+
+Nothing to configure — and the combination is worth naming, because tier 2 was built
+around it. That bundle wraps each test in a transaction and rolls it back, so the rows a
+test created exist on that connection and nowhere else. This is why `EXPLAIN` is run
+through the connection that issued the query rather than a fresh one: a separate
+connection would explain an empty database and report plans for data that is not there.
+
+Two things follow that are worth knowing:
+
+- **The connection is reused across tests, the trace is not.** The bundle keeps one
+  connection open for the suite; query-guard opens and closes a trace per test, so
+  findings stay per-test regardless.
+- **Plans are cached per shape per connection, not per test.** A query explained in the
+  first test is not explained again in the four-hundredth — which is what keeps tier 2
+  affordable, and also means the plan reflects the data as it was when first seen. On a
+  fixture-sized database that would matter; tier 2 is not for fixture-sized databases
+  anyway, and `min-rows` is what keeps it quiet there.
+
 ### Keeping smoke/load tests out of query-guard
 
 Performance smoke tests should run without the extension: the DBAL middleware and the
@@ -621,6 +949,10 @@ tools/stand/capture.sh          # refresh reference plans in tests/Fixture/Expla
 tools/stand/run-tier2-tests.sh  # run tier 2 against live MySQL and PostgreSQL
 docker compose -f tools/stand/docker-compose.yml down -v
 ```
+
+The official `php` images ship neither `pdo_mysql` nor `pdo_pgsql`, so
+`run-tier2-tests.sh` builds a throwaway image per platform on first use. Set
+`QG_MYSQL_IMAGE` / `QG_PG_IMAGE` to reuse images your project already has.
 
 The expected plan flags in those tests were written by hand from reading real `EXPLAIN`
 output, never generated from our own parser — otherwise a misunderstanding of a plan would

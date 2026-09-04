@@ -159,6 +159,40 @@ final class EloquentAdapterTest extends TestCase
         self::assertTrue(method_exists(\Illuminate\Database\Connection::class, 'listen'));
     }
 
+    /**
+     * A subscription that reaches one connection is not a subscription that worked.
+     *
+     * It succeeds, reports itself installed, and misses every secondary connection —
+     * which is the exact shape of failure this package exists to refuse. So it has to
+     * appear in the summary next to the findings, where the run still looks healthy.
+     */
+    public function testAConnectionOnlyListenerSaysSoInTheSummary(): void
+    {
+        $adapter = new EloquentAdapter($this->capsule->getConnection());
+        $adapter->install($this->collector);
+
+        self::assertTrue($adapter->isInstalled());
+        self::assertStringContainsString(
+            'the listener sits on a single connection',
+            implode("\n", $adapter->notices()),
+        );
+    }
+
+    /**
+     * The dispatcher covers every connection, so nothing needs saying.
+     */
+    public function testADispatcherSubscriptionIsNotComplainedAbout(): void
+    {
+        $dispatcher = $this->capsule->getEventDispatcher();
+        self::assertNotNull($dispatcher);
+
+        $adapter = new EloquentAdapter($dispatcher);
+        $adapter->install($this->collector);
+
+        self::assertTrue($adapter->isInstalled());
+        self::assertSame([], $adapter->notices());
+    }
+
     public function testNothingIsRecordedOutsideTestBoundaries(): void
     {
         (new EloquentAdapter($this->capsule->getConnection()))->install($this->collector);

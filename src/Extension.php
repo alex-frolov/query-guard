@@ -13,7 +13,9 @@ use QueryGuard\Baseline\Baseline;
 use QueryGuard\Collector\DefaultQueryCollector;
 use QueryGuard\Query\CallsiteResolver;
 use QueryGuard\Report\ConsoleReporter;
+use QueryGuard\Report\JsonReporter;
 use QueryGuard\Report\Report;
+use QueryGuard\Report\Reporters;
 use QueryGuard\Rule\DuplicateQueryRule;
 use QueryGuard\Rule\NoLimitRule;
 use QueryGuard\Rule\NPlusOneRule;
@@ -68,6 +70,12 @@ final class Extension implements PHPUnitExtension
             return;
         }
 
+        $basePath = getcwd() ?: '';
+
+        // before any adapter builds a resolver of its own: a DBAL middleware is
+        // constructed by the application's container, which cannot be handed one
+        CallsiteResolver::configureSkipPaths($config->skipPaths);
+
         $callsiteResolver = CallsiteResolver::default();
         $report = new Report();
 
@@ -89,8 +97,8 @@ final class Extension implements PHPUnitExtension
             ...($tier2?->rules() ?? []),
         ]);
 
-        $basePath = getcwd() ?: '';
         $baselinePath = self::absolutePath($config->baselinePath, $basePath);
+        $jsonReportPath = self::absolutePath($config->jsonReportPath, $basePath);
 
         $baseline = '' === $baselinePath ? Baseline::empty($basePath) : Baseline::fromFile($baselinePath, $basePath);
         $generated = $config->generateBaseline && '' !== $baselinePath ? Baseline::empty($basePath) : null;
@@ -112,7 +120,12 @@ final class Extension implements PHPUnitExtension
             new ErroredSubscriber($report),
             new ExecutionFinishedSubscriber(
                 $report,
-                new ConsoleReporter($stream, getcwd() ?: '', $config->failOn),
+                new Reporters([
+                    // the JSON report goes first so that a failure to write it can still
+                    // reach the console summary — see `Reporters`
+                    ...('' === $jsonReportPath ? [] : [new JsonReporter($jsonReportPath, $basePath, $config->failOn)]),
+                    new ConsoleReporter($stream, $basePath, $config->failOn),
+                ]),
                 $collector,
                 $adapters,
                 $config->mode,
@@ -120,12 +133,14 @@ final class Extension implements PHPUnitExtension
                 $baselinePath,
                 $tier2,
                 $config->failOn,
+                $baseline,
             ),
         );
     }
 
     /**
-     * A relative baseline path is resolved against the working directory.
+     * A relative path — the baseline, the JSON report — is resolved against the working
+     * directory.
      *
      * "Absolute" is tested for both spellings on purpose: the package normalises Windows
      * paths elsewhere (`CallsiteResolver`), and a `C:\` baseline must not end up

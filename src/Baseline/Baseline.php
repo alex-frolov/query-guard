@@ -19,6 +19,17 @@ use QueryGuard\Finding\Finding;
 final class Baseline
 {
     /**
+     * Entries matched during this run.
+     *
+     * A baseline only ever grows otherwise: a finding gets fixed, its entry stays, and
+     * from then on the file silences something that no longer exists. Nobody discovers
+     * that on their own, so the run has to say it.
+     *
+     * @var array<string, true>
+     */
+    private array $matched = [];
+
+    /**
      * @param array<string, array<array-key, mixed>> $entries
      */
     private function __construct(
@@ -65,7 +76,41 @@ final class Baseline
 
     public function contains(Finding $finding): bool
     {
-        return '' !== $finding->signature && isset($this->entries[$this->key($finding)]);
+        if ('' === $finding->signature) {
+            return false;
+        }
+
+        $key = $this->key($finding);
+
+        if (!isset($this->entries[$key])) {
+            return false;
+        }
+
+        $this->matched[$key] = true;
+
+        return true;
+    }
+
+    /**
+     * Entries that silenced nothing during this run.
+     *
+     * Deliberately not called "obsolete": after `--filter`, or a run that excluded a
+     * group, an entry going unmatched only means its test did not execute. The summary
+     * says which of the two it is looking at, rather than the caller guessing.
+     *
+     * @return list<string>
+     */
+    public function unmatched(): array
+    {
+        $unmatched = [];
+
+        foreach (array_keys($this->entries) as $key) {
+            if (!isset($this->matched[$key])) {
+                $unmatched[] = $key;
+            }
+        }
+
+        return $unmatched;
     }
 
     public function add(Finding $finding): void
