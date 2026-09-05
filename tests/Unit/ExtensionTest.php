@@ -151,6 +151,43 @@ final class ExtensionTest extends TestCase
     }
 
     /**
+     * A relative "baseline"/"report-json" that climbs out of the project via ".." is
+     * more likely a stray CI substitution than an intended destination. Silently
+     * reading from, or writing to, wherever that lands is exactly the kind of quiet
+     * misbehaviour this package exists to call out.
+     */
+    public function testAPathThatClimbsOutOfTheProjectIsFlaggedInTheSummary(): void
+    {
+        $report = $this->reportFor(['baseline' => '../../etc/cron.d/query-guard']);
+
+        self::assertNotSame([], $report->notices());
+        self::assertStringContainsString('climbs out of the project', implode("\n", $report->notices()));
+    }
+
+    /**
+     * A relative path that stays inside the project — however it is spelled — must not
+     * be flagged: only an actual escape is worth a word.
+     */
+    public function testARelativePathThatStaysInsideTheProjectIsNotFlagged(): void
+    {
+        self::assertSame([], $this->reportFor(['baseline' => 'var/sub/../query-guard.json'])->notices());
+    }
+
+    /**
+     * @param array<string, string> $parameters
+     */
+    private function reportFor(array $parameters): \QueryGuard\Report\Report
+    {
+        $subscribers = $this->registeredSubscribers($parameters);
+        $property = new \ReflectionProperty($subscribers[\count($subscribers) - 1], 'report');
+        $report = $property->getValue($subscribers[\count($subscribers) - 1]);
+
+        self::assertInstanceOf(\QueryGuard\Report\Report::class, $report);
+
+        return $report;
+    }
+
+    /**
      * @param array<string, string> $parameters
      *
      * @return list<object>

@@ -527,6 +527,46 @@ not fire — an unhydrated join, or a lazy load that moved rather than went away
 query repeatedly instead of one per row: nearly there, and the remaining fix is to keep
 the result rather than to change the query.
 
+### Troubleshooting false positives
+
+A finding you do not believe is not a reason to raise the global budget or drop a rule
+project-wide. Work through these, in order, before deciding it is wrong:
+
+**1. Is it happening in `setUp()`?** It should not be flagged at all — queries made there
+are counted separately (`in setUp: N`) and never analysed (see "When query-guard stays
+silent" above). If a factory loop in a *test body* is producing the finding, moving that
+fixture creation into `setUp()` is usually the actual fix, not an exception.
+
+**2. Is it a batch fetch that got misread?** `n-plus-one` already skips `IN (?, ?, ?)` —
+that pattern is the cure, not the disease. It does **not** skip `NOT IN (?, ?, ?)`: an
+exclude-list is a different pattern from "fetch a page of rows by key", and a per-row
+lookup that happens to also exclude a couple of ids is still N+1.
+
+**3. Is the test doing genuinely heavy, one-off work?** Bulk import, a report export, a
+migration test — give it its own budget rather than raising the number every other test
+is measured against:
+
+```php
+#[AllowQueries(120)]
+public function testBulkImport(): void
+```
+
+**4. Is the rule right about the pattern but wrong for this test?** Narrow the exception
+to exactly the rule that misjudges it, on exactly the test, with a comment saying why —
+see "Per-test overrides" above. A class-wide `#[IgnoreRule]` is the last resort, not the
+first.
+
+**5. Does the callsite land inside vendored framework code?** No `#[IgnoreRule]` fixes a
+finding whose file is not yours — add the package to `skip-paths` instead, so the finding
+points at the first frame in your own code.
+
+**6. Are you running under a parallel runner?** Each ParaTest worker prints its own
+summary; "findings: 3" from four workers is four partial reports, not twelve findings —
+see "When query-guard stays silent" above.
+
+If none of the above explains it, it is a bug report rather than a configuration change:
+the rule genuinely cannot tell this pattern apart from the one it exists to catch.
+
 ### Adopting on a legacy project
 
 You cannot fix hundreds of old tests at once, and you do not need to. The goal is to draw
@@ -725,6 +765,42 @@ where the rot starts.
 
 On a new project the baseline is optional — every finding is fresh enough to fix. If the
 suite ever outgrows that, the `baseline` parameter is right there.
+
+### Migrating from phpunit-query-count-assertions
+
+The differences are covered in "About the closest neighbour" above; this is the
+mechanical part of moving over.
+
+**1. Keep both installed while you migrate.** Nothing about query-guard conflicts with
+the trait-based assertions — they watch the same queries independently, so there is no
+need to rip the old one out before the new one is in place.
+
+**2. Map the assertions you have to query-guard's equivalents:**
+
+| phpunit-query-count-assertions | query-guard |
+|---|---|
+| `assertQueryCount(N)` / `assertMaxQueryCount(N)` | `max-queries`, globally, or `#[AllowQueries(N)]` per test |
+| `assertNoDuplicateQueries()` | `duplicate-query`, on by default |
+| `assertNoLazyLoading()` (Laravel only) | `n-plus-one`, on by default — and it also works on Doctrine |
+| `assertMaxQueryTime($seconds)` | not covered: query-guard reports counts and plans, not wall-clock time |
+
+**3. Remove the trait and its assertions from each test as you confirm query-guard
+catches the same thing.** Run with `mode="report"` first (see "Starting a new project"
+above) so a query-guard finding shows up next to the assertion it is replacing, before
+you delete the assertion.
+
+**4. Expect query-guard to find more, not less.** It is not a stricter version of the
+same check: `assertNoDuplicateQueries()` compares SQL *and bound values*, so a real N+1 —
+where the values differ by definition — produces zero duplicates there, and
+query-guard's `n-plus-one` is what catches it instead. A suite that was green under the
+old assertions is not evidence the new ones will start green too; see "Adopting on a
+legacy project" above for baselining whatever surfaces.
+
+**5. Once every test has been converted, remove the dependency:**
+
+```bash
+composer remove --dev mattiasgeniar/phpunit-query-count-assertions
+```
 
 ### Running it in CI
 

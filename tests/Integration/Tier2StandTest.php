@@ -144,6 +144,23 @@ final class Tier2StandTest extends TestCase
     }
 
     /**
+     * An index is used, but nothing narrows it — every entry in it is walked. That is
+     * just as expensive as a full table scan on a table this size, so `table-scan` must
+     * not stay silent about it the way `no-possible-index` correctly does (an index does
+     * exist and was used).
+     */
+    public function testFullIndexScanIsFound(): void
+    {
+        $this->connection->fetchAllAssociative('SELECT indexed_col FROM big ORDER BY indexed_col');
+
+        $findings = $this->findingsFor(new TableScanRule($this->plans, CallsiteResolver::default()));
+
+        self::assertNotSame([], $findings);
+        self::assertStringContainsString('idx_big_indexed', $findings[0]->message);
+        self::assertStringContainsString('"big"', $findings[0]->message);
+    }
+
+    /**
      * The two platforms describe the same join differently, and that is not a bug but a
      * difference in the questions they answer.
      *

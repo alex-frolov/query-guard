@@ -115,6 +115,10 @@ final class EloquentAdapter implements OrmAdapter
 
         if ($target instanceof Dispatcher) {
             $target->listen(QueryExecuted::class, $listener);
+            // a dispatcher covers every connection, including ones opened after this
+            // call — whatever an earlier, single-connection subscription left behind
+            // no longer describes what this run can see
+            self::$singleConnectionOnly = false;
         } elseif (\is_callable([$target, 'listen'])) {
             // a connection, or a manager forwarding through `__call` to the default
             // connection — either way this covers one connection and no other

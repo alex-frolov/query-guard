@@ -80,27 +80,8 @@ final class JsonReporter implements Reporter
         ];
     }
 
-    /**
-     * A signature is `rule|file|fingerprint`, so only the middle field is shortened — a
-     * blanket replace would also rewrite a fingerprint containing the same text.
-     */
     private function relative(string $value): string
     {
-        if ('' === $this->basePath) {
-            return $value;
-        }
-
-        $prefix = rtrim($this->basePath, '/').'/';
-        $parts = explode('|', $value, 3);
-
-        if (3 !== \count($parts)) {
-            return str_starts_with($value, $prefix) ? substr($value, \strlen($prefix)) : $value;
-        }
-
-        if (str_starts_with($parts[1], $prefix)) {
-            $parts[1] = substr($parts[1], \strlen($prefix));
-        }
-
-        return implode('|', $parts);
+        return Finding::relativeTo($value, $this->basePath);
     }
 }

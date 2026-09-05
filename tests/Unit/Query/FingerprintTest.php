@@ -89,6 +89,18 @@ final class FingerprintTest extends TestCase
     }
 
     /**
+     * MySQL honours backslash escapes by default (without NO_BACKSLASH_ESCAPES) — a
+     * second, equally valid spelling of an escaped quote next to the SQL-standard `''`.
+     */
+    public function testABackslashEscapedQuoteDoesNotEndTheLiteralEarly(): void
+    {
+        self::assertSame(
+            'select * from notes where body = ? and id = ?',
+            Fingerprint::of("SELECT * FROM notes WHERE body = 'a \\'-- b' AND id = 7")->value(),
+        );
+    }
+
+    /**
      * Doctrine's aliases (`id_1`, `name_2`) are not literals: stripping them would
      * collapse different queries into one fingerprint.
      */

@@ -24,13 +24,25 @@ namespace QueryGuard\Query;
  * name has to stay findable for `Rule\Sql::touchesTable()`. `#` is not treated as a
  * comment either: it is a MySQL-only spelling that ORMs do not emit, while PostgreSQL
  * uses it inside operators.
+ *
+ * A literal ends at a doubled quote (`''`, the SQL-standard escape) or a backslash
+ * escape (`\'`, what MySQL honours by default without `NO_BACKSLASH_ESCAPES`) —
+ * whichever the query actually used. Reading only the first would end the literal
+ * early on the other spelling, and everything after it — a real comment marker or the
+ * next literal — stops being recognisable, the exact silent-misdiagnosis shape this
+ * class exists to close off.
  */
 final class SqlText
 {
     /**
      * A string literal, a block comment or a line comment — whichever opens first.
      */
-    private const LITERAL_OR_COMMENT = "#'(?:[^']|'')*'|/\*.*?\*/|--[^\n]*#s";
+    private const LITERAL_OR_COMMENT = "#'(?:[^'\\\\]|''|\\\\.)*'|/\*.*?\*/|--[^\n]*#s";
+
+    /**
+     * A string literal on its own, captured so `preg_split()` can hand it back untouched.
+     */
+    private const LITERAL = "#('(?:[^'\\\\]|''|\\\\.)*')#s";
 
     /**
      * How many distinct queries to remember before starting the cache over.
@@ -66,6 +78,49 @@ final class SqlText
     public static function placeholders(string $sql): string
     {
         return self::rewrite($sql, '?');
+    }
+
+    /**
+     * Comments taken out, string literals left exactly as they were.
+     *
+     * What `QueryEvent::shape()` needs: a duplicate is an identical query with identical
+     * values, so a literal cannot be blanked out the way `stripped()` and `placeholders()`
+     * blank it — only the comment a tracer stapled on top (and the gap its removal
+     * leaves) should go.
+     *
+     * Literals are split off first, by the same rule `LITERAL_OR_COMMENT` uses to
+     * recognise one, so a comment is only ever searched for in text already known to be
+     * outside a literal — the "one pass" guarantee, done as a split instead of a single
+     * alternation because a literal's contents must survive untouched, including
+     * whatever whitespace is inside it.
+     */
+    public static function withoutComments(string $sql): string
+    {
+        $key = "\0no-comments".$sql;
+
+        if (\array_key_exists($key, self::$cache)) {
+            return self::$cache[$key];
+        }
+
+        if (\count(self::$cache) >= self::CACHE_LIMIT) {
+            self::$cache = [];
+        }
+
+        $chunks = preg_split(self::LITERAL, $sql, -1, \PREG_SPLIT_DELIM_CAPTURE);
+
+        if (false === $chunks) {
+            return self::$cache[$key] = $sql;
+        }
+
+        foreach ($chunks as $i => $chunk) {
+            if (1 === $i % 2) {
+                continue; // a literal, captured by the group — left exactly as it was
+            }
+
+            $chunks[$i] = (string) preg_replace(['#/\*.*?\*/|--[^\n]*#s', '#\s+#'], ' ', $chunk);
+        }
+
+        return self::$cache[$key] = trim(implode('', $chunks));
     }
 
     /**

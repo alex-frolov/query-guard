@@ -35,6 +35,10 @@ final class SqlTest extends TestCase
         yield 'a single key' => ['SELECT * FROM t WHERE id IN (?)', false];
         yield 'no list at all' => ['SELECT * FROM t WHERE id = ?', false];
 
+        // "not one of these few" is an exclude-list, not a page fetched by key — the
+        // opposite of the pattern that cures N+1, so it must not be read as one
+        yield 'a NOT IN exclude-list' => ['SELECT * FROM t WHERE id NOT IN (?, ?, ?)', false];
+
         // a literal is not a comment. Stripping comments before literals used to let the
         // `--` inside this string eat the closing quote, and everything after it stopped
         // being recognisable — the batch fetch went unseen and `n-plus-one` fired on the
@@ -42,6 +46,9 @@ final class SqlTest extends TestCase
         yield 'a line-comment marker inside a literal' => ["SELECT * FROM notes WHERE body = 'a -- b' AND id IN (1, 2, 3)", true];
         yield 'a block-comment marker inside a literal' => ["SELECT * FROM t WHERE pattern = '/*' AND id IN (?, ?)", true];
         yield 'an escaped quote around a marker' => ["SELECT * FROM t WHERE q = 'it''s -- fine' AND id IN (?, ?)", true];
+        // MySQL honours backslash escapes by default (without NO_BACKSLASH_ESCAPES) —
+        // a second, equally valid spelling of the same escape
+        yield 'a backslash-escaped quote around a marker' => ["SELECT * FROM t WHERE q = 'it\\'s -- fine' AND id IN (?, ?)", true];
 
         // and the converse still holds: a real comment hides a real list
         yield 'a list inside a line comment' => ["SELECT * FROM t WHERE id = ?\n-- id IN (1, 2, 3)", false];

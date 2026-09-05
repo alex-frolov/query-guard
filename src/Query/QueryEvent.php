@@ -95,6 +95,11 @@ final class QueryEvent
      * must not be able to break the suite it is watching. The fallback separates
      * queries by parameter count only, which under-reports duplicates rather than
      * inventing them.
+     *
+     * The SQL goes through `SqlText::withoutComments()` first: a per-request comment
+     * from tracing middleware or sqlcommenter must not turn two identical queries into
+     * two different shapes, or `duplicate-query` stops seeing them — and `n-plus-one`
+     * starts misreading the same duplicates as lazy loading instead.
      */
     public function shape(): string
     {
@@ -102,10 +107,12 @@ final class QueryEvent
             return $this->shape;
         }
 
+        $sql = SqlText::withoutComments($this->sql);
+
         try {
-            return $this->shape = $this->sql.'|'.serialize($this->params);
+            return $this->shape = $sql.'|'.serialize($this->params);
         } catch (\Throwable) {
-            return $this->shape = $this->sql.'|?'.\count($this->params);
+            return $this->shape = $sql.'|?'.\count($this->params);
         }
     }
 

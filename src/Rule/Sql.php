@@ -21,8 +21,13 @@ final class Sql
      *
      * Two or more elements, every one of them a placeholder or a number. A list of
      * string literals is deliberately NOT matched — see `isBatchFetch()`.
+     *
+     * `NOT IN` is excluded on purpose: "not one of these few" is an exclude-list, not
+     * the "fetch a page of rows by key" pattern that makes a batch fetch the opposite
+     * of N+1. Matching it here would let a genuine per-row lookup that merely happens to
+     * exclude a couple of ids slip past `n-plus-one` unflagged.
      */
-    private const KEY_LIST = '/\bIN\s*\(\s*(?:\?|:\w+|\$\d+|-?\d+)(?:\s*,\s*(?:\?|:\w+|\$\d+|-?\d+))+\s*\)/i';
+    private const KEY_LIST = '/(?<!NOT\s)\bIN\s*\(\s*(?:\?|:\w+|\$\d+|-?\d+)(?:\s*,\s*(?:\?|:\w+|\$\d+|-?\d+))+\s*\)/i';
 
     /**
      * Any single identifier as a query may spell it — quoted in any of the three

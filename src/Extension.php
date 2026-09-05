@@ -100,6 +100,18 @@ final class Extension implements PHPUnitExtension
         $baselinePath = self::absolutePath($config->baselinePath, $basePath);
         $jsonReportPath = self::absolutePath($config->jsonReportPath, $basePath);
 
+        foreach (['baseline' => [$config->baselinePath, $baselinePath], 'report-json' => [$config->jsonReportPath, $jsonReportPath]] as $parameter => [$configured, $absolute]) {
+            if ('' !== $configured && self::escapesBasePath($configured, $absolute, $basePath)) {
+                $report->addNotice(sprintf(
+                    '"%s" is configured as "%s", which climbs out of the project (%s) — '
+                    .'check for a stray ".." before trusting what gets read from or written there.',
+                    $parameter,
+                    $configured,
+                    $basePath,
+                ));
+            }
+        }
+
         $baseline = '' === $baselinePath ? Baseline::empty($basePath) : Baseline::fromFile($baselinePath, $basePath);
         $generated = $config->generateBaseline && '' !== $baselinePath ? Baseline::empty($basePath) : null;
 
@@ -152,10 +164,59 @@ final class Extension implements PHPUnitExtension
             return '';
         }
 
-        $isAbsolute = str_starts_with($path, '/')
+        return self::isAbsolute($path) ? $path : ('' === $basePath ? '.' : $basePath).'/'.$path;
+    }
+
+    private static function isAbsolute(string $path): bool
+    {
+        return str_starts_with($path, '/')
             || str_starts_with($path, '\\')          // a UNC share
             || 1 === preg_match('/^[A-Za-z]:[\\\\\/]/', $path);
+    }
 
-        return $isAbsolute ? $path : ('' === $basePath ? '.' : $basePath).'/'.$path;
+    /**
+     * Whether a path configured relative to the project ended up outside it.
+     *
+     * Only asked of paths that were not already absolute: an explicit absolute path — a
+     * shared cache directory, say — is a deliberate choice and none of this tool's
+     * business. A relative one that climbs out via ".." is more likely a stray CI
+     * substitution than an intended destination, worth a word before it reads from, or
+     * writes to, somewhere the project owner did not expect.
+     */
+    private static function escapesBasePath(string $configured, string $absolute, string $basePath): bool
+    {
+        if ('' === $basePath || self::isAbsolute($configured)) {
+            return false;
+        }
+
+        $base = self::normalize($basePath);
+        $target = self::normalize($absolute);
+
+        return $target !== $base && !str_starts_with($target, $base.'/');
+    }
+
+    /**
+     * Collapses "." and ".." segments without touching the filesystem: the baseline or
+     * the JSON report may not exist yet on a first run, so `realpath()` cannot be asked.
+     */
+    private static function normalize(string $path): string
+    {
+        $parts = [];
+
+        foreach (explode('/', str_replace('\\', '/', $path)) as $segment) {
+            if ('' === $segment || '.' === $segment) {
+                continue;
+            }
+
+            if ('..' === $segment) {
+                array_pop($parts);
+
+                continue;
+            }
+
+            $parts[] = $segment;
+        }
+
+        return '/'.implode('/', $parts);
     }
 }

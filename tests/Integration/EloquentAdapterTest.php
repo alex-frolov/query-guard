@@ -193,6 +193,25 @@ final class EloquentAdapterTest extends TestCase
         self::assertSame([], $adapter->notices());
     }
 
+    /**
+     * The first `install()` call can land before the application (and its dispatcher)
+     * exists — see the class docblock's three subscription paths — and falls back to a
+     * single connection. Once a later call reaches the dispatcher, the run has full
+     * coverage again, and the stale "single connection" notice must not survive it.
+     */
+    public function testReachingTheDispatcherLaterClearsTheSingleConnectionNotice(): void
+    {
+        $adapter = new EloquentAdapter($this->capsule->getConnection());
+        $adapter->install($this->collector);
+        self::assertNotSame([], $adapter->notices());
+
+        $dispatcher = $this->capsule->getEventDispatcher();
+        self::assertNotNull($dispatcher);
+        self::assertTrue(EloquentAdapter::attach($dispatcher, $this->collector));
+
+        self::assertSame([], $adapter->notices());
+    }
+
     public function testNothingIsRecordedOutsideTestBoundaries(): void
     {
         (new EloquentAdapter($this->capsule->getConnection()))->install($this->collector);

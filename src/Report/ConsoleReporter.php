@@ -107,12 +107,6 @@ final class ConsoleReporter implements Reporter
 
     private function shorten(string $file): string
     {
-        if ('' === $this->basePath) {
-            return $file;
-        }
-
-        $prefix = rtrim($this->basePath, '/').'/';
-
-        return str_starts_with($file, $prefix) ? substr($file, \strlen($prefix)) : $file;
+        return Finding::relativeTo($file, $this->basePath);
     }
 }

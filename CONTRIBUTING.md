@@ -18,12 +18,15 @@ vendor/bin/phpstan analyse --configuration=tools/phpstan/tests.neon           # 
 vendor/bin/php-cs-fixer fix --dry-run --diff                                   # `composer fix` applies
 ```
 
-No local PHP is needed for any of it — `./dev.sh` in the repository root runs the same
-commands in a container:
+No local PHP is needed for any of it — run the same commands in a container:
 
 ```bash
-QG_IMAGE=php:8.4-cli ./dev.sh php vendor/bin/phpunit
+docker run --rm -v "$PWD":/app -w /app php:8.4-cli php vendor/bin/phpunit
 ```
+
+See the README's [Development](README.md#development) section for the full set of
+commands, including how dependencies are installed and how tier 2 is verified against a
+live database.
 
 CI runs it across PHP 8.2–8.5, both Doctrine DBAL generations and, for tier 2, live
 MySQL and PostgreSQL. It also measures coverage on one job — `composer coverage`

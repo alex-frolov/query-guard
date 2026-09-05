@@ -68,6 +68,20 @@ final class QueryEventTest extends TestCase
         self::assertStringStartsWith('SELECT * FROM t WHERE id = ?|', $event->shape());
     }
 
+    /**
+     * A per-request comment from tracing middleware or sqlcommenter must not turn two
+     * identical queries into two different shapes, or `duplicate-query` stops seeing
+     * them — mirrors `FingerprintTest::testAPerRequestCommentDoesNotSplitAShape()`.
+     */
+    public function testAPerRequestCommentDoesNotSplitAShape(): void
+    {
+        $first = new QueryEvent('SELECT * FROM t WHERE id = ? /* trace=abc123 */', [1]);
+        $second = new QueryEvent('SELECT * FROM t WHERE id = ? /* trace=def456 */', [1]);
+
+        self::assertSame($first->shape(), $second->shape());
+        self::assertSame($first->shape(), (new QueryEvent('SELECT * FROM t WHERE id = ?', [1]))->shape());
+    }
+
     public function testCallsiteIsResolvedFromTheStackAndMemoised(): void
     {
         $event = new QueryEvent('SELECT 1', stack: [
