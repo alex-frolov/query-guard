@@ -207,9 +207,12 @@ design:
 
 Two more worth knowing:
 
-- **Tier 2 does not work on Eloquent.** `QueryExecuted` gives no access to a connection
-  on which `EXPLAIN` could run inside the same transaction, and there is nothing to
-  quietly substitute. Tier 1 works fully.
+- **Tier 2 on Eloquent explains eagerly, right where a query fires — not lazily, when a
+  rule asks.** `RefreshDatabase`/`DatabaseTransactions` roll a test's transaction back in
+  its own `tearDown()`, before any rule gets to run, so waiting would mean explaining
+  against data that is already gone. This also means an `EXPLAIN` briefly shows up as
+  another query on the same connection — other listeners on the same dispatcher
+  (Telescope, Debugbar, an application's own query logger) will see it too.
 - **Queries made in `setUp()` are not analysed.** They are counted and shown separately
   (`in setUp: N`). That is the decision the whole false-positive story rests on — a
   factory creating 50 rows in a loop is 50 identical INSERTs from one callsite. The
@@ -880,10 +883,8 @@ Nothing is lost when that happens, but the name in the summary is one you never
 configured. If that matters, give the replica its own database name, or read the notice
 as the mapping it is.
 
-**Eloquent has no tier 2 at all.** `QueryExecuted` gives no access to a connection on
-which `EXPLAIN` could run inside the same transaction. Tier 1 works fully on every
-connection — provided the listener reached the dispatcher rather than a single
-connection, which the summary also says.
+See "With Eloquent, and `RefreshDatabase`/`DatabaseTransactions`" below for the Eloquent
+side of the same per-connection design.
 
 ### Keeping a baseline healthy through a refactor
 
@@ -934,6 +935,28 @@ Two things follow that are worth knowing:
   affordable, and also means the plan reflects the data as it was when first seen. On a
   fixture-sized database that would matter; tier 2 is not for fixture-sized databases
   anyway, and `min-rows` is what keeps it quiet there.
+
+### With Eloquent, and RefreshDatabase/DatabaseTransactions
+
+Nothing to configure — and the combination is worth naming, because it decided how tier 2
+had to work here. Both traits roll a test's transaction back in that test's own
+`tearDown()`, and Laravel rebuilds the whole application between tests: unlike
+`dama/doctrine-test-bundle`'s one connection for the whole suite, there is no point after
+the query runs where the connection is still guaranteed to hold that test's data. So the
+`EXPLAIN` runs immediately, inside the `QueryExecuted` listener, before the test can tear
+anything down — not lazily when a rule asks, the way Doctrine's tier 2 does.
+
+Two things follow that are worth knowing:
+
+- **The `EXPLAIN` is itself a query on the same connection**, so it briefly shows up to
+  every other listener on the same dispatcher — Telescope, Debugbar, an application's own
+  query logger. query-guard's own trace is unaffected; theirs may not be.
+- **Plans are cached by query shape and connection name, not by test.** A shape explained
+  in the first test is not explained again in the four-hundredth — the connection itself
+  is re-resolved on every attempt (Laravel hands out a fresh one every test), but the
+  `Plan` is not, so it reflects the data as it was the first time this shape was seen.
+  Same trade-off as dama/doctrine-test-bundle above, and the same answer: not a
+  fixture-sized database's friend, and `min-rows` is what keeps tier 2 quiet there.
 
 ### Keeping smoke/load tests out of query-guard
 

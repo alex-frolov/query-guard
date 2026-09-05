@@ -12,6 +12,7 @@ use QueryGuard\Adapter\AdapterSet;
 use QueryGuard\Baseline\Baseline;
 use QueryGuard\Collector\DefaultQueryCollector;
 use QueryGuard\Query\CallsiteResolver;
+use QueryGuard\Query\QueryEvent;
 use QueryGuard\Report\ConsoleReporter;
 use QueryGuard\Report\JsonReporter;
 use QueryGuard\Report\Report;
@@ -86,6 +87,16 @@ final class Extension implements PHPUnitExtension
         $tier2 = $config->tier2
             ? new Tier2Factory($adapters, $collector, $callsiteResolver, $config->minRows)
             : null;
+
+        // Eloquent cannot wait for a rule to ask for a plan at `Test\Finished`: by then
+        // RefreshDatabase/DatabaseTransactions has already rolled the test's transaction
+        // back. Wiring this here, not in EloquentAdapter::install(), keeps the adapter
+        // usable with tier 2 off — nothing to call when there is no PlanProvider.
+        if (null !== $tier2) {
+            $adapters->eloquent()?->enableEagerExplain(static function (QueryEvent $event) use ($tier2): void {
+                $tier2->provider()->planFor($event);
+            });
+        }
 
         $engine = new RuleEngine([
             new NPlusOneRule($callsiteResolver, $config->nPlusOneThreshold),

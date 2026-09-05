@@ -38,6 +38,16 @@ final class Tier2Factory
     }
 
     /**
+     * Exposed so an adapter that cannot wait for a rule to ask — Eloquent, see
+     * `EloquentAdapter::enableEagerExplain()` — can call `planFor()` itself, right where
+     * the query fires.
+     */
+    public function provider(): PlanProvider
+    {
+        return $this->provider;
+    }
+
+    /**
      * @return list<Rule>
      */
     public function rules(): array

@@ -6,8 +6,10 @@ namespace QueryGuard\Adapter\Eloquent;
 
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Contracts\Events\Dispatcher;
+use Illuminate\Database\Connection;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Support\Facades\DB;
+use QueryGuard\Adapter\Explainer;
 use QueryGuard\Adapter\OrmAdapter;
 use QueryGuard\Collector\QueryCollector;
 use QueryGuard\Query\CallsiteResolver;
@@ -60,6 +62,24 @@ final class EloquentAdapter implements OrmAdapter
     private static bool $singleConnectionOnly = false;
 
     /**
+     * Every connection a query has been seen on, keyed by `QueryExecuted::$connectionName`
+     * — the same name a `QueryEvent` carries. Filled from the listener itself: Eloquent
+     * gives no separate "connection opened" event, but the first query on a connection is
+     * just as good a moment to learn about it.
+     *
+     * @var array<string, Connection>
+     */
+    private static array $connections = [];
+
+    /**
+     * Runs tier 2's EXPLAIN synchronously, right where a query fires, instead of waiting
+     * for a rule to ask for it later. See `explainers()` for why this exists at all.
+     *
+     * @var (\Closure(QueryEvent): void)|null
+     */
+    private static ?\Closure $eagerExplain = null;
+
+    /**
      * @param object|null $resolver a connection manager or a connection itself;
      *                              defaults to the root of the `DB` facade
      */
@@ -97,20 +117,31 @@ final class EloquentAdapter implements OrmAdapter
             $sink = $collector ?? QueryGuard::collector();
 
             if (!$sink->isRecording()) {
+                // also true while an eager EXPLAIN below is running: it goes through this
+                // same connection and therefore back through this same listener, and must
+                // not be recorded as a query of its own or explained a second time
                 return;
             }
+
+            self::$connections[$query->connectionName] = $query->connection;
 
             // resolved here rather than stored: 200 frames per query held until the end
             // of the test cost ~106 MB per 1000 queries — see QueryEvent
             $callsite = $callsiteResolver->resolve(debug_backtrace(\DEBUG_BACKTRACE_IGNORE_ARGS, 200));
 
-            $sink->record(new QueryEvent(
+            $event = new QueryEvent(
                 sql: $query->sql,
                 params: array_values($query->bindings),
                 durationMs: $query->time,
                 connection: $query->connectionName,
                 callsite: $callsite,
-            ));
+            );
+
+            $sink->record($event);
+
+            if (null !== self::$eagerExplain && $event->isSelect()) {
+                (self::$eagerExplain)($event);
+            }
         };
 
         if ($target instanceof Dispatcher) {
@@ -138,6 +169,19 @@ final class EloquentAdapter implements OrmAdapter
         self::$subscribed = null;
         self::$attached = false;
         self::$singleConnectionOnly = false;
+        self::$connections = [];
+        self::$eagerExplain = null;
+    }
+
+    /**
+     * Wires tier 2's `PlanProvider::planFor()` to run the moment a SELECT fires, instead
+     * of when a rule asks for it after the test has finished. See `explainers()`.
+     *
+     * @param \Closure(QueryEvent): void $onSelect
+     */
+    public static function enableEagerExplain(\Closure $onSelect): void
+    {
+        self::$eagerExplain = $onSelect;
     }
 
     public function name(): string
@@ -159,12 +203,39 @@ final class EloquentAdapter implements OrmAdapter
         return self::$attached;
     }
 
+    /**
+     * One `EloquentExplainer` per connection seen so far — each resolving its connection
+     * from `self::$connections` at call time rather than capturing today's object.
+     *
+     * `QueryExecuted::$connection` is only reachable from inside the listener, and by
+     * the time a rule asks for a plan — after `Test\Finished`, i.e. after `tearDown()` —
+     * `RefreshDatabase`/`DatabaseTransactions` has already rolled the test's transaction
+     * back. Unlike `dama/doctrine-test-bundle`, which keeps one transaction open for the
+     * whole suite, Eloquent's per-test rollback means the connection is only trustworthy
+     * for the query it just ran while that listener call is still on the stack. So this
+     * map exists only to satisfy `PlanProvider::sourceFor()`'s lookup — the actual EXPLAIN
+     * has to be triggered from the listener itself, eagerly; see `enableEagerExplain()`.
+     *
+     * The late binding matters just as much: `PlanProvider` resolves an `Explainer` once
+     * per connection name and reuses it for the rest of the run, which is safe for
+     * Doctrine's single suite-wide connection but not for Eloquent — the whole application
+     * is torn down between tests, and a `Connection` captured that way outlives its
+     * container. Left bound to a fixed object, a fingerprint first seen in a later test
+     * would EXPLAIN through a dead connection and fail with `Target class [config] does
+     * not exist` — confirmed on a live Laravel run. Resolving by name at call time instead
+     * always reaches whichever connection this listener saw most recently.
+     *
+     * @return array<string, Explainer>
+     */
     public function explainers(): array
     {
-        // tier 2 is not wired for Eloquent yet: `QueryExecuted` gives no access to a
-        // connection on which EXPLAIN could run inside the same transaction. That needs
-        // its own solution, and there is nothing to quietly substitute.
-        return [];
+        $explainers = [];
+
+        foreach (array_keys(self::$connections) as $name) {
+            $explainers[$name] = new EloquentExplainer(static fn (): Connection => self::$connections[$name]);
+        }
+
+        return $explainers;
     }
 
     public function installationHint(): string

@@ -33,6 +33,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   DBAL binds them correctly itself, but the deprecated `Statement::execute($params)` path
   passes the caller's list unchanged, and `bindValue(0, ...)` is rejected outright — the
   EXPLAIN then failed for a reason with nothing to do with the query under study.
+- **`EloquentExplainer` no longer EXPLAINs through a torn-down connection.**
+  `PlanProvider::sourceFor()` resolves an `Explainer` once per connection name and keeps
+  it for the rest of the run — correct for Doctrine's single suite-wide connection, wrong
+  for Eloquent, where Laravel rebuilds the whole application between tests. A query shape
+  first seen in a later test explained through the first test's already-destroyed
+  connection and failed with `Target class [config] does not exist` — its reconnect
+  callback, tied to a container that no longer exists. `EloquentExplainer` now resolves
+  the connection by name at call time instead of holding the object it was built with.
 
 ### Changed
 
@@ -56,6 +64,14 @@ the instructions.
 
 ### Added
 
+- **Tier 2 now works on Eloquent.** It used to return no explainer at all:
+  `RefreshDatabase`/`DatabaseTransactions` roll a test's transaction back in that test's
+  own `tearDown()`, before a rule ever gets to ask for a plan, so waiting the way
+  Doctrine's tier 2 does would mean explaining data that is already gone. `EloquentAdapter`
+  now runs `PlanProvider::planFor()` synchronously inside the `QueryExecuted` listener,
+  while the transaction is still open. Confirmed on a live Laravel 13 run against
+  PostgreSQL, including the connection-staleness bug that surfaced along the way (see
+  `Fixed`).
 - `report-json` parameter: the whole run written to a file as JSON — counters, notices
   and findings, with paths relative to the working directory and a `failing` flag
   answering the only question a CI script usually has. The console summary is written to

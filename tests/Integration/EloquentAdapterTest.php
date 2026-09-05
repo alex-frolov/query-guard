@@ -12,6 +12,7 @@ use PHPUnit\Framework\TestCase;
 use QueryGuard\Adapter\Eloquent\EloquentAdapter;
 use QueryGuard\Collector\DefaultQueryCollector;
 use QueryGuard\Query\CallsiteResolver;
+use QueryGuard\Query\QueryEvent;
 use QueryGuard\Query\Trace;
 use QueryGuard\TestIdentifier;
 use QueryGuard\TestOptions;
@@ -220,5 +221,127 @@ final class EloquentAdapterTest extends TestCase
         $this->capsule->getConnection()->statement('CREATE TABLE t (id INTEGER)');
 
         self::assertSame(0, $this->collector->totalRecorded());
+    }
+
+    public function testExplainersAreBuiltFromConnectionsSeen(): void
+    {
+        (new EloquentAdapter($this->capsule->getConnection()))->install($this->collector);
+        $this->capsule->getConnection()->statement('CREATE TABLE t (id INTEGER)');
+
+        $explainers = (new EloquentAdapter())->explainers();
+
+        self::assertArrayHasKey('default', $explainers);
+        self::assertSame('sqlite', $explainers['default']->platform());
+    }
+
+    /**
+     * `PlanProvider` resolves an `Explainer` once per connection name and keeps it for
+     * the rest of the run — safe for Doctrine's single suite-wide connection, not for
+     * Eloquent, which gets a brand new `Connection` every test. An `Explainer` bound to
+     * whichever connection was live when it was built would EXPLAIN a later test's query
+     * through a torn-down one. Confirmed missing on a live Laravel run before this fix: a
+     * fingerprint first seen in a later test failed with `Target class [config] does not
+     * exist` — the reconnect callback of an already-destroyed application's container.
+     */
+    public function testExplainerReflectsTheCurrentConnectionNotTheFirstOne(): void
+    {
+        (new EloquentAdapter($this->capsule->getConnection()))->install($this->collector);
+        $this->capsule->getConnection()->statement('CREATE TABLE t (id INTEGER)');
+
+        $explainer = (new EloquentAdapter())->explainers()['default'];
+
+        // stands in for the next test: a fresh application, a fresh connection, same name
+        $secondApp = new Manager();
+        $secondApp->addConnection(['driver' => 'sqlite', 'database' => ':memory:']);
+        $secondApp->setEventDispatcher(new Dispatcher(new Container()));
+        $secondApp->bootEloquent();
+        (new EloquentAdapter($secondApp->getConnection()))->install($this->collector);
+        $secondApp->getConnection()->statement('CREATE TABLE u (id INTEGER)');
+        $secondApp->getConnection()->insert('INSERT INTO u (id) VALUES (7)');
+
+        // "u" only exists on the second connection — resolving the stale first one
+        // would fail outright instead of returning this row
+        self::assertSame([['id' => 7]], $explainer->run('SELECT id FROM u'));
+    }
+
+    public function testEagerExplainRunsSynchronouslyOnEverySelect(): void
+    {
+        $seen = [];
+        EloquentAdapter::enableEagerExplain(function (QueryEvent $event) use (&$seen): void {
+            $seen[] = $event->sql;
+        });
+
+        (new EloquentAdapter($this->capsule->getConnection()))->install($this->collector);
+        $connection = $this->capsule->getConnection();
+        $connection->statement('CREATE TABLE t (id INTEGER)');
+        $connection->select('SELECT * FROM t');
+
+        self::assertSame(['SELECT * FROM t'], $seen);
+    }
+
+    public function testEagerExplainIsNotCalledForWrites(): void
+    {
+        $seen = [];
+        EloquentAdapter::enableEagerExplain(function (QueryEvent $event) use (&$seen): void {
+            $seen[] = $event->sql;
+        });
+
+        (new EloquentAdapter($this->capsule->getConnection()))->install($this->collector);
+        $connection = $this->capsule->getConnection();
+        $connection->statement('CREATE TABLE t (id INTEGER)');
+        $connection->insert('INSERT INTO t (id) VALUES (1)');
+
+        self::assertSame([], $seen);
+    }
+
+    /**
+     * The eager hook goes back through the same connection — a real EXPLAIN does exactly
+     * this. Recursing into the same listener must not record that query a second time or
+     * call the hook on it, the way `PlanProvider::explain()` guards it in production by
+     * pausing the collector around the call.
+     */
+    public function testEagerExplainRecursingThroughTheSameConnectionDoesNotLoop(): void
+    {
+        $calls = 0;
+        EloquentAdapter::enableEagerExplain(function (QueryEvent $event) use (&$calls): void {
+            ++$calls;
+
+            $this->collector->pause();
+
+            try {
+                $this->capsule->getConnection()->select('SELECT 1');
+            } finally {
+                $this->collector->resume();
+            }
+        });
+
+        (new EloquentAdapter($this->capsule->getConnection()))->install($this->collector);
+        $connection = $this->capsule->getConnection();
+        $connection->statement('CREATE TABLE t (id INTEGER)');
+        $connection->select('SELECT * FROM t');
+
+        self::assertSame(1, $calls);
+        self::assertCount(2, $this->trace->events());
+    }
+
+    /**
+     * A hook left over from a previous test must not fire in the next one — `reset()` is
+     * called from every test's `tearDown()` for exactly this reason.
+     */
+    public function testResetClearsTheEagerExplainHook(): void
+    {
+        $calls = 0;
+        EloquentAdapter::enableEagerExplain(function () use (&$calls): void {
+            ++$calls;
+        });
+
+        EloquentAdapter::reset();
+
+        (new EloquentAdapter($this->capsule->getConnection()))->install($this->collector);
+        $connection = $this->capsule->getConnection();
+        $connection->statement('CREATE TABLE t (id INTEGER)');
+        $connection->select('SELECT * FROM t');
+
+        self::assertSame(0, $calls);
     }
 }

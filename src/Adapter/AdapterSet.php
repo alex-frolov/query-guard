@@ -72,6 +72,21 @@ final class AdapterSet
     }
 
     /**
+     * The active `EloquentAdapter`, if any — wiring eager tier 2 explains needs to reach
+     * it specifically, since that is not something every `OrmAdapter` needs.
+     */
+    public function eloquent(): ?EloquentAdapter
+    {
+        foreach ($this->adapters as $adapter) {
+            if ($adapter instanceof EloquentAdapter) {
+                return $adapter;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * @return list<string>
      */
     public function names(): array
