@@ -45,8 +45,11 @@ jobs:
       - name: Install dependencies
         run: composer update --prefer-dist --no-interaction --no-progress ${{ matrix.deps == 'lowest' && '--prefer-lowest' || '' }}
 
+      # one `composer show`, filtered: the command takes a single package name, and the
+      # three-argument form used here before died with "Too many arguments" into a `head`
+      # that swallowed the exit code — five green jobs printing nothing
       - name: Show resolved versions
-        run: composer show doctrine/dbal doctrine/orm phpunit/phpunit | head -20
+        run: composer show --direct | grep -E '^(doctrine/(dbal|orm)|phpunit/phpunit) '
 
       - name: PHPUnit
         run: vendor/bin/phpunit
@@ -325,7 +328,19 @@ jobs:
       - name: Roave BC check
         run: |
           bin="$(composer global config bin-dir --absolute)"
-          tag="$(git describe --tags --abbrev=0)"
+
+          # Roave diffs the branch against the most recent tag. With no tag at all there is
+          # no released API and nothing to break, but `git describe` reports that as exit
+          # 128 rather than an empty answer, which failed the job on the first push.
+          tag="$(git describe --tags --abbrev=0 2>/dev/null || true)"
+          if [ -z "$tag" ]; then
+            {
+              echo "## Backward compatibility"
+              echo
+              echo "No tag in this repository yet, so there is no released API to break."
+            } | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
 
           set +e
           "$bin/roave-backward-compatibility-check" \
