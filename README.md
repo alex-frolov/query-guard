@@ -13,7 +13,7 @@ performance problems hiding behind them — N+1 above all.
 Install it, add six lines to `phpunit.xml`, and run your suite as usual. No assertions
 in your tests, no separate command, no code changes.
 
-> **Status: 0.1.0, the first public release.** Everything documented below works and is
+> **Status: 0.2.1, the first public release.** Everything documented below works and is
 > covered by tests, run on PHPUnit 10.5–13, Doctrine ORM 2–3, DBAL 3–4, MySQL and
 > PostgreSQL. The API may still shift before 1.0 — see
 > [UPGRADING.md](UPGRADING.md) for what has moved so far.
