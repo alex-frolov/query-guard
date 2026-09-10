@@ -26,7 +26,7 @@ jobs:
           - php: '8.2'
             deps: 'lowest'
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -36,7 +36,7 @@ jobs:
           coverage: none
 
       - name: Cache Composer downloads
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/composer/files
           key: composer-${{ matrix.php }}-${{ matrix.deps }}-${{ hashFiles('composer.json') }}
@@ -58,7 +58,7 @@ jobs:
     name: Pest
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -68,7 +68,7 @@ jobs:
           coverage: none
 
       - name: Cache Composer downloads
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/composer/files
           key: composer-pest-${{ hashFiles('tools/pest/composer.json') }}
@@ -129,7 +129,7 @@ jobs:
     name: Laravel
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -139,7 +139,7 @@ jobs:
           coverage: none
 
       - name: Cache Composer downloads
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/composer/files
           key: composer-laravel-${{ hashFiles('tools/laravel/composer.json') }}
@@ -187,7 +187,7 @@ jobs:
             config: 'tools/phpstan/dbal3.neon'
             constraint: '^3.9'
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -199,7 +199,7 @@ jobs:
       # generation, chosen at runtime. Both have to be analysed — under each version the
       # "other" variant is excluded
       - name: Cache Composer downloads
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/composer/files
           key: composer-dbal${{ matrix.dbal }}-${{ hashFiles('composer.json') }}
@@ -221,7 +221,7 @@ jobs:
     name: Coverage
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -231,7 +231,7 @@ jobs:
           coverage: pcov
 
       - name: Cache Composer downloads
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/composer/files
           key: composer-coverage-${{ hashFiles('composer.json') }}
@@ -248,7 +248,7 @@ jobs:
         run: vendor/bin/phpunit --coverage-text --coverage-clover=coverage.xml
 
       - name: Upload coverage report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-clover
           path: coverage.xml
@@ -258,7 +258,7 @@ jobs:
     name: Code style
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -267,7 +267,7 @@ jobs:
           coverage: none
 
       - name: Cache Composer downloads
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/composer/files
           key: composer-codestyle-${{ hashFiles('composer.json') }}
@@ -286,7 +286,7 @@ jobs:
     name: Backward compatibility
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           # the tool diffs against the most recent tag, so it needs the tags and the
           # history behind them — the default shallow checkout has neither
@@ -401,7 +401,7 @@ jobs:
           --health-cmd="pg_isready -U stand -d stand"
           --health-interval=5s --health-timeout=5s --health-retries=30
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -411,7 +411,7 @@ jobs:
           coverage: none
 
       - name: Cache Composer downloads
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/composer/files
           key: composer-tier2-${{ hashFiles('composer.json') }}
