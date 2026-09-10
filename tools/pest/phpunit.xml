@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         bootstrap="vendor/autoload.php"
+         cacheDirectory=".phpunit.cache"
+         colors="false">
+    <testsuites>
+        <testsuite name="stand">
+            <directory>tests</directory>
+        </testsuite>
+    </testsuites>
+    <extensions>
+        <!-- var/ deliberately does not exist in a fresh checkout: the reporter has to
+             create it, which is the other half of what this stand guards -->
+        <bootstrap class="QueryGuard\Extension">
+            <parameter name="mode" value="report"/>
+            <parameter name="duplicate-threshold" value="3"/>
+            <parameter name="query-in-loop-threshold" value="5"/>
+            <parameter name="report-json" value="var/query-guard-%token%.json"/>
+        </bootstrap>
+    </extensions>
+</phpunit>

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         bootstrap="../../../vendor/autoload.php"
+         cacheDirectory="../../../.phpunit.cache/fixture"
+         colors="false">
+    <testsuites>
+        <testsuite name="fixture">
+            <directory>Traced</directory>
+        </testsuite>
+    </testsuites>
+    <extensions>
+        <bootstrap class="QueryGuard\Extension">
+            <parameter name="mode" value="report"/>
+            <parameter name="max-queries" value="2"/>
+            <!-- this suite is about trace boundaries and attributes; tier 1 rules are covered in Tier1 -->
+            <parameter name="query-in-loop-threshold" value="50"/>
+            <parameter name="duplicate-threshold" value="50"/>
+        </bootstrap>
+    </extensions>
+</phpunit>

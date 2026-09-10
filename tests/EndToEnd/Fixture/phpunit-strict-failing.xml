@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         bootstrap="../../../vendor/autoload.php"
+         cacheDirectory="../../../.phpunit.cache/fixture-strict-failing"
+         colors="false">
+    <testsuites>
+        <testsuite name="fixture">
+            <directory>StrictFailing</directory>
+        </testsuite>
+    </testsuites>
+    <extensions>
+        <bootstrap class="QueryGuard\Extension">
+            <parameter name="mode" value="strict"/>
+            <parameter name="max-queries" value="2"/>
+        </bootstrap>
+    </extensions>
+</phpunit>

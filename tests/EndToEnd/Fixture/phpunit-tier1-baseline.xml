@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         bootstrap="../../../vendor/autoload.php"
+         cacheDirectory="../../../.phpunit.cache/fixture-tier1-baseline"
+         colors="false">
+    <testsuites>
+        <testsuite name="fixture">
+            <directory>Tier1</directory>
+        </testsuite>
+    </testsuites>
+    <extensions>
+        <bootstrap class="QueryGuard\Extension">
+            <parameter name="mode" value="report"/>
+            <parameter name="select-star" value="true"/>
+            <parameter name="large-tables" value="invoices, orders"/>
+            <parameter name="query-in-loop-threshold" value="5"/>
+            <parameter name="duplicate-threshold" value="3"/>
+            <parameter name="baseline" value="tests/EndToEnd/Fixture/Tier1/baseline.json"/>
+        </bootstrap>
+    </extensions>
+</phpunit>

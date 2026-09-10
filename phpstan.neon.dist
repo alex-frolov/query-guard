@@ -1,0 +1,13 @@
+parameters:
+    level: max
+    paths:
+        - src
+    # The Dbal3/* classes are written against Doctrine DBAL 3 signatures and are only
+    # ever loaded there (the choice is made by `enum_exists(ParameterType::class)`).
+    # PHPStan analyses them against whichever DBAL version is installed, so under
+    # DBAL 4 the signature mismatch is both inevitable and intentional.
+    #
+    # CI runs the analysis under DBAL 3 as well, where Dbal4/* is excluded instead.
+    excludePaths:
+        analyseAndScan:
+            - src/Adapter/Doctrine/Dbal3

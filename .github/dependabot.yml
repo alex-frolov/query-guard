@@ -1,0 +1,52 @@
+# Dependency updates.
+#
+# The two ecosystems here are updated for different reasons, and it is worth keeping
+# them apart in your head.
+
+version: 2
+
+updates:
+  # Actions are pinned by major (`actions/checkout@v5`), which means a bad release inside
+  # that major reaches CI on its own while a new major never does. This is the half that
+  # needs watching.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    # One pull request for all of them: they move together and are read together.
+    groups:
+      actions:
+        patterns: ['*']
+    commit-message:
+      prefix: 'ci'
+    labels: ['dependencies', 'ci']
+
+  # Composer, for a library with no lock file, works differently from an application: a
+  # pull request appears only when a release falls OUTSIDE the declared constraint. So
+  # these are never routine bumps — each one is the question "should this package support
+  # a new major?", which is a deliberate answer and often needs code.
+  - package-ecosystem: composer
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: 'deps'
+    labels: ['dependencies']
+    groups:
+      # The static-analysis and style tools: a new major here is usually a config change
+      # and nothing more, so they travel together.
+      dev-tooling:
+        patterns:
+          - 'phpstan/*'
+          - 'friendsofphp/php-cs-fixer'
+    ignore:
+      # The supported ORM range is a promise this package makes to its users, not
+      # something to widen because a release happened. Doctrine and Illuminate majors are
+      # added by hand, with the adapter changes that make them true.
+      - dependency-name: 'doctrine/*'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'illuminate/*'
+        update-types: ['version-update:semver-major']

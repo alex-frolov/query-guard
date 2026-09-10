@@ -1,0 +1,18 @@
+{
+    "name": "query-guard/laravel-stand",
+    "description": "A throwaway Laravel application that installs query-guard the way an Eloquent user does — see README.md",
+    "type": "project",
+    "license": "MIT",
+    "require-dev": {
+        "orchestra/testbench": "^10.0 || ^11.0",
+        "alex-frolov/query-guard": "@dev"
+    },
+    "repositories": [
+        { "type": "path", "url": "../.." }
+    ],
+    "minimum-stability": "dev",
+    "prefer-stable": true,
+    "autoload-dev": {
+        "psr-4": { "QueryGuard\\Stand\\Laravel\\": "tests/" }
+    }
+}

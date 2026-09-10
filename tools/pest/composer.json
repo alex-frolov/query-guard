@@ -1,0 +1,21 @@
+{
+    "name": "query-guard/pest-stand",
+    "description": "A throwaway project that installs query-guard the way a Pest user does — see README.md",
+    "type": "project",
+    "license": "MIT",
+    "require-dev": {
+        "pestphp/pest": "^4.0",
+        "alex-frolov/query-guard": "@dev"
+    },
+    "repositories": [
+        { "type": "path", "url": "../.." }
+    ],
+    "minimum-stability": "dev",
+    "prefer-stable": true,
+    "config": {
+        "allow-plugins": { "pestphp/pest-plugin": true }
+    },
+    "autoload-dev": {
+        "psr-4": { "QueryGuard\\Stand\\Pest\\": "tests/" }
+    }
+}

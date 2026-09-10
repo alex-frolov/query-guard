@@ -1,0 +1,27 @@
+{
+  "query_block": {
+    "select_id": 1,
+    "cost_info": {
+      "query_cost": "10287.90"
+    },
+    "table": {
+      "table_name": "big",
+      "access_type": "ALL",
+      "rows_examined_per_scan": 99989,
+      "rows_produced_per_join": 9998,
+      "filtered": "10.00",
+      "cost_info": {
+        "read_cost": "9288.01",
+        "eval_cost": "999.89",
+        "prefix_cost": "10287.90",
+        "data_read_per_join": "2M"
+      },
+      "used_columns": [
+        "id",
+        "plain_col",
+        "name"
+      ],
+      "attached_condition": "(`stand`.`big`.`plain_col` = 42)"
+    }
+  }
+}

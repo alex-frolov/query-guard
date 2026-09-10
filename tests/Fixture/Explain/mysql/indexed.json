@@ -1,0 +1,37 @@
+{
+  "query_block": {
+    "select_id": 1,
+    "cost_info": {
+      "query_cost": "110.00"
+    },
+    "table": {
+      "table_name": "big",
+      "access_type": "ref",
+      "possible_keys": [
+        "idx_big_indexed"
+      ],
+      "key": "idx_big_indexed",
+      "used_key_parts": [
+        "indexed_col"
+      ],
+      "key_length": "4",
+      "ref": [
+        "const"
+      ],
+      "rows_examined_per_scan": 100,
+      "rows_produced_per_join": 100,
+      "filtered": "100.00",
+      "cost_info": {
+        "read_cost": "100.00",
+        "eval_cost": "10.00",
+        "prefix_cost": "110.00",
+        "data_read_per_join": "21K"
+      },
+      "used_columns": [
+        "id",
+        "indexed_col",
+        "name"
+      ]
+    }
+  }
+}

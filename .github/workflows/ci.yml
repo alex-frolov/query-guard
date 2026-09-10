@@ -1,0 +1,427 @@
+name: CI
+
+on:
+  push:
+    branches: ['main']
+  pull_request:
+
+# a push to a branch with an open PR used to start the whole matrix twice; and a second
+# push supersedes the first rather than queueing behind it
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  tests:
+    name: PHP ${{ matrix.php }}${{ matrix.deps == 'lowest' && ' / prefer-lowest' || '' }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.2', '8.3', '8.4', '8.5']
+        deps: ['highest']
+        include:
+          # the lower bound of support: PHPUnit 10.5, Doctrine ORM 2 / DBAL 3 —
+          # the exact combination still found on real projects today
+          - php: '8.2'
+            deps: 'lowest'
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: pdo_sqlite, mbstring, intl
+          coverage: none
+
+      - name: Cache Composer downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/composer/files
+          key: composer-${{ matrix.php }}-${{ matrix.deps }}-${{ hashFiles('composer.json') }}
+          restore-keys: composer-${{ matrix.php }}-${{ matrix.deps }}-
+
+      - name: Install dependencies
+        run: composer update --prefer-dist --no-interaction --no-progress ${{ matrix.deps == 'lowest' && '--prefer-lowest' || '' }}
+
+      - name: Show resolved versions
+        run: composer show doctrine/dbal doctrine/orm phpunit/phpunit | head -20
+
+      - name: PHPUnit
+        run: vendor/bin/phpunit
+
+  pest:
+    name: Pest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: mbstring, intl
+          coverage: none
+
+      - name: Cache Composer downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/composer/files
+          key: composer-pest-${{ hashFiles('tools/pest/composer.json') }}
+          restore-keys: composer-pest-
+
+      # A project of its own rather than `composer require --dev pestphp/pest` here: Pest
+      # pins a PHPUnit far above this package's floor, and the stand is meant to install
+      # the package the way a user does anyway — see tools/pest/README.md
+      - name: Install the stand
+        run: composer update --prefer-dist --no-interaction --no-progress --working-dir=tools/pest
+
+      # Pest appends `--no-output` to every run because Collision prints instead of
+      # PHPUnit. Read as a request for silence, that used to switch the extension off
+      # entirely: green suite, no report, nothing printed. An empty report here means it
+      # is switched off again.
+      - name: Sequential run fills the report
+        working-directory: tools/pest
+        run: |
+          rm -rf var
+          vendor/bin/pest
+          php -r '$report = json_decode((string) @file_get_contents("var/query-guard.json"), true);
+                  $tests = $report["summary"]["tests"] ?? 0;
+                  if (3 !== $tests) { fwrite(STDERR, "expected 3 tests in the report, found $tests\n"); exit(1); }
+                  if ([] === ($report["findings"] ?? [])) { fwrite(STDERR, "the report has no findings\n"); exit(1); }'
+
+      # These tests query straight from the test body, so nobody is above the callsite and
+      # the chain has to come back empty. Pest's own frames used to fill it instead — nine
+      # of them, naming a `{closure}` in `TestCaseMethodFactory` as the caller. Only a live
+      # Pest puts those frames on the stack, so this is the one place the skip can be held.
+      - name: The call chain carries no runner frames
+        working-directory: tools/pest
+        run: |
+          php -r '$report = json_decode((string) file_get_contents("var/query-guard.json"), true);
+                  foreach ($report["findings"] as $finding) {
+                      foreach ($finding["chain"] ?? [] as $frame) {
+                          if (str_contains($frame, "pestphp")) {
+                              fwrite(STDERR, "a Pest frame is being reported as a caller: $frame\n");
+                              exit(1);
+                          }
+                      }
+                  }'
+
+      # Every ParaTest worker is its own process writing its own file; together they must
+      # still add up to the whole suite. One file with one test means the workers are
+      # overwriting each other again.
+      - name: Parallel run keeps every worker's findings
+        working-directory: tools/pest
+        run: |
+          rm -rf var
+          vendor/bin/pest --parallel
+          php -r '$tests = 0;
+                  foreach (glob("var/query-guard*.json") as $file) {
+                      $tests += json_decode((string) file_get_contents($file), true)["summary"]["tests"] ?? 0;
+                  }
+                  if (3 !== $tests) { fwrite(STDERR, "expected 3 tests across the worker reports, found $tests\n"); exit(1); }'
+
+  laravel:
+    name: Laravel
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: mbstring, intl, sqlite3, pdo_sqlite
+          coverage: none
+
+      - name: Cache Composer downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/composer/files
+          key: composer-laravel-${{ hashFiles('tools/laravel/composer.json') }}
+          restore-keys: composer-laravel-
+
+      # A project of its own for the same reason as the Pest stand: what is being guarded
+      # is a whole Laravel application lifecycle, which nothing inside this repository can
+      # build — see tools/laravel/README.md
+      - name: Install the stand
+        run: composer update --prefer-dist --no-interaction --no-progress --working-dir=tools/laravel
+
+      # Laravel flushes the application between tests and leaves the DB facade pointing at
+      # it, so the adapter's reinstall on Test\PreparationStarted reaches a dead container.
+      # Uncaught, that is one "Exception in third-party event subscriber" per test — which
+      # is what every Laravel run of this package used to produce.
+      - name: The run is clean and the report is filled
+        working-directory: tools/laravel
+        run: |
+          rm -rf var
+          vendor/bin/phpunit 2>&1 | tee "$RUNNER_TEMP/laravel-stand.log"
+          if grep -q 'third-party' "$RUNNER_TEMP/laravel-stand.log"; then
+            echo 'the adapter is throwing out of a PHPUnit subscriber again' >&2
+            exit 1
+          fi
+          php -r '$report = json_decode((string) @file_get_contents("var/query-guard.json"), true);
+                  $summary = $report["summary"] ?? [];
+                  if (3 !== ($summary["tests"] ?? 0)) { fwrite(STDERR, "expected 3 tests in the report, found " . ($summary["tests"] ?? 0) . "\n"); exit(1); }
+                  if ([] === ($report["findings"] ?? [])) { fwrite(STDERR, "the report has no findings\n"); exit(1); }
+                  // the fixture bucket is filled only through QueryGuardServiceProvider, i.e. the
+                  // subscription made while the application boots; empty means the run fell back
+                  // to Test\Prepared and setUp() went unseen
+                  if (0 === ($summary["fixture-queries"] ?? 0)) { fwrite(STDERR, "no fixture queries: the provider did not subscribe\n"); exit(1); }'
+
+  static:
+    name: PHPStan (DBAL ${{ matrix.dbal }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - dbal: '4'
+            config: 'phpstan.neon.dist'
+            constraint: '^4.0'
+          - dbal: '3'
+            config: 'tools/phpstan/dbal3.neon'
+            constraint: '^3.9'
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+
+      # The Driver → Connection → Statement wrappers exist in two variants, one per DBAL
+      # generation, chosen at runtime. Both have to be analysed — under each version the
+      # "other" variant is excluded
+      - name: Cache Composer downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/composer/files
+          key: composer-dbal${{ matrix.dbal }}-${{ hashFiles('composer.json') }}
+          restore-keys: composer-dbal${{ matrix.dbal }}-
+
+      - name: Install dependencies
+        run: composer update --prefer-dist --no-interaction --no-progress --with "doctrine/dbal:${{ matrix.constraint }}"
+
+      - name: PHPStan
+        run: vendor/bin/phpstan analyse --no-progress --memory-limit=1G --configuration=${{ matrix.config }}
+
+      # The suite is analysed once, not per DBAL generation: it contains no version-split
+      # wrappers of its own. One level below `src` — see tools/phpstan/tests.neon.
+      - name: PHPStan (tests)
+        if: matrix.dbal == '4'
+        run: vendor/bin/phpstan analyse --no-progress --memory-limit=1G --configuration=tools/phpstan/tests.neon
+
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: pdo_sqlite, mbstring, intl
+          coverage: pcov
+
+      - name: Cache Composer downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/composer/files
+          key: composer-coverage-${{ hashFiles('composer.json') }}
+          restore-keys: composer-coverage-
+
+      - name: Install dependencies
+        run: composer update --prefer-dist --no-interaction --no-progress
+
+      # A number in the log on every run, not a gate. There is deliberately no minimum:
+      # the end-to-end tests launch PHPUnit in a child process, and a child process
+      # contributes nothing to the parent's coverage, so the figure always understates
+      # what the suite exercises. A threshold over it would measure the wrong thing.
+      - name: PHPUnit with coverage
+        run: vendor/bin/phpunit --coverage-text --coverage-clover=coverage.xml
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-clover
+          path: coverage.xml
+          retention-days: 14
+
+  codestyle:
+    name: Code style
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+
+      - name: Cache Composer downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/composer/files
+          key: composer-codestyle-${{ hashFiles('composer.json') }}
+          restore-keys: composer-codestyle-
+
+      - name: Install dependencies
+        run: composer update --prefer-dist --no-interaction --no-progress
+
+      - name: PHP-CS-Fixer
+        run: vendor/bin/php-cs-fixer fix --dry-run --diff
+
+      - name: Validate composer.json
+        run: composer validate --strict
+
+  backward-compatibility:
+    name: Backward compatibility
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # the tool diffs against the most recent tag, so it needs the tags and the
+          # history behind them — the default shallow checkout has neither
+          fetch-depth: 0
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          # the tool's own requirements, not this package's
+          extensions: bcmath, intl
+          coverage: none
+
+      # Installed globally rather than added to composer.json: Roave brings a large
+      # dependency tree of its own, and putting it beside phpstan and php-cs-fixer is how
+      # this package would acquire the dependency conflict it currently does not have.
+      #
+      # Not the `docker://nyholm/roave-bc-check-ga` action, which is the obvious way to
+      # do this and was tried first. That image pins nikic/php-parser 4, which cannot
+      # read PHP 8.4 syntax, so every dependency using it turned into a parse warning:
+      # 109 reported "changes" of which 98 were noise. It also runs as root over a
+      # checkout owned by the runner, which git refuses to read at all. A global install
+      # runs as the user that owns the checkout and carries a current parser.
+      - name: Install Roave BC Check
+        run: composer global require --no-interaction --no-progress roave/backward-compatibility-check
+
+      # Roave answers "I found breaks" with exit code 3. Before 1.0 that is information,
+      # not a failure, so the step tells 3 apart from the tool actually falling over and
+      # reports the findings in the run summary.
+      #
+      # `continue-on-error: true` would be the one-line version and was what this job used
+      # first. It is worse: it paints the check red on every run that finds anything, and
+      # a check that is always red is a check nobody reads by the time 1.0 makes it mean
+      # something. To make breaks blocking at 1.0, drop the `3` from the condition below.
+      #
+      # `--install-development-dependencies` because the ORMs are dev dependencies here:
+      # without them the adapters' parent classes cannot be resolved and the comparison
+      # skips those classes rather than judging them.
+      - name: Roave BC check
+        run: |
+          bin="$(composer global config bin-dir --absolute)"
+          tag="$(git describe --tags --abbrev=0)"
+
+          set +e
+          "$bin/roave-backward-compatibility-check" \
+            --install-development-dependencies --format=markdown > bc.md
+          status=$?
+          set -e
+
+          if [ "$status" -ne 0 ] && [ "$status" -ne 3 ]; then
+            echo "roave-backward-compatibility-check itself failed with exit $status" >&2
+            exit "$status"
+          fi
+
+          # the report starts at its first heading; composer's own chatter precedes it
+          {
+            echo "## Backward compatibility since ${tag}"
+            echo
+            if [ "$status" -eq 0 ]; then
+              echo "Nothing on this branch breaks the released API."
+            else
+              echo "This branch breaks the API released in \`${tag}\`. Before 1.0 that is allowed —"
+              echo "but every line below has to appear in \`CHANGELOG.md\` before this is merged."
+              echo
+              sed -n '/^# /,$p' bc.md
+            fi
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+  tier2:
+    name: Tier 2 / ${{ matrix.platform }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: mysql
+            driver: pdo_mysql
+            extension: pdo_mysql
+          - platform: postgres
+            driver: pdo_pgsql
+            extension: pdo_pgsql
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: stand
+          MYSQL_DATABASE: stand
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -uroot -pstand"
+          --health-interval=5s --health-timeout=5s --health-retries=30
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: stand
+          POSTGRES_DB: stand
+          POSTGRES_USER: stand
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd="pg_isready -U stand -d stand"
+          --health-interval=5s --health-timeout=5s --health-retries=30
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: ${{ matrix.extension }}, pdo_sqlite, mbstring, intl
+          coverage: none
+
+      - name: Cache Composer downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/composer/files
+          key: composer-tier2-${{ hashFiles('composer.json') }}
+          restore-keys: composer-tier2-
+
+      - name: Install dependencies
+        run: composer update --prefer-dist --no-interaction --no-progress
+
+      # The tier 2 stand: 100 000 rows. On a fixture-sized database the plan rules are
+      # not merely useless but harmful
+      - name: Seed MySQL stand
+        if: matrix.platform == 'mysql'
+        run: mysql -h 127.0.0.1 -uroot -pstand stand < tools/stand/seed.mysql.sql
+
+      - name: Seed PostgreSQL stand
+        if: matrix.platform == 'postgres'
+        env:
+          PGPASSWORD: stand
+        run: psql -h 127.0.0.1 -U stand -d stand -f tools/stand/seed.postgres.sql
+
+      - name: Tier 2 tests
+        env:
+          QG_STAND_DRIVER: ${{ matrix.driver }}
+          QG_STAND_HOST: 127.0.0.1
+          QG_STAND_USER: ${{ matrix.platform == 'mysql' && 'root' || 'stand' }}
+          QG_STAND_PASSWORD: stand
+          QG_STAND_DB: stand
+        run: vendor/bin/phpunit --testsuite integration --filter Tier2StandTest

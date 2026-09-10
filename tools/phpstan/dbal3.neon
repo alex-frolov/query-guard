@@ -1,0 +1,17 @@
+# The same analysis, but for the DBAL 3 matrix entry: there it is Dbal4/* that belongs
+# to the "other" version.
+includes:
+    - ../../phpstan.neon.dist
+
+parameters:
+    excludePaths:
+        analyseAndScan!:
+            - ../../src/Adapter/Doctrine/Dbal4
+
+    # Under DBAL 3 `ParameterType` is a class of constants, so PHPStan is right that
+    # `enum_exists()` there is always false — that is exactly the fact the check reads.
+    # The call has to stay version-agnostic: under DBAL 4 the same line returns true.
+    ignoreErrors:
+        -
+            identifier: function.impossibleType
+            path: ../../src/Adapter/Doctrine/Dbal.php

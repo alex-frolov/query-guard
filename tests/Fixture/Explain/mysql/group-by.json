@@ -1,0 +1,29 @@
+{
+  "query_block": {
+    "select_id": 1,
+    "cost_info": {
+      "query_cost": "10287.90"
+    },
+    "grouping_operation": {
+      "using_temporary_table": true,
+      "using_filesort": false,
+      "table": {
+        "table_name": "big",
+        "access_type": "ALL",
+        "rows_examined_per_scan": 99989,
+        "rows_produced_per_join": 99989,
+        "filtered": "100.00",
+        "cost_info": {
+          "read_cost": "289.00",
+          "eval_cost": "9998.90",
+          "prefix_cost": "10287.90",
+          "data_read_per_join": "20M"
+        },
+        "used_columns": [
+          "id",
+          "plain_col"
+        ]
+      }
+    }
+  }
+}

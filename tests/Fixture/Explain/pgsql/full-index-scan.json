@@ -1,0 +1,17 @@
+[
+  {
+    "Plan": {
+      "Node Type": "Index Only Scan",
+      "Parallel Aware": false,
+      "Async Capable": false,
+      "Scan Direction": "Forward",
+      "Index Name": "idx_big_indexed",
+      "Relation Name": "big",
+      "Alias": "big",
+      "Startup Cost": 0.29,
+      "Total Cost": 1940.29,
+      "Plan Rows": 100000,
+      "Plan Width": 4
+    }
+  }
+]
