@@ -6,6 +6,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-13
+
 ### Added
 
 - `format-version` in the baseline and in the JSON report. It goes up only on an
@@ -33,4 +35,5 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   Nothing passed it, and a replacement could only reproduce or disable the built-in
   enrichment.
 
-[Unreleased]: https://github.com/alex-frolov/query-guard/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/alex-frolov/query-guard/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/alex-frolov/query-guard/compare/v0.2.1...v0.3.0

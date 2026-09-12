@@ -82,7 +82,7 @@ part of the signature, so a finding already in the baseline stays silenced; what
 what was never baselined. Before such an upgrade, run once with `mode="report"` and look at
 the `[error]` lines, or regenerate the baseline if they are all known.
 
-## Unreleased
+## 0.3.0
 
 ### Classes outside the public API are marked `@internal`
 
