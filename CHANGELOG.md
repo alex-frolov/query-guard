@@ -10,8 +10,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 The public API drawn in 0.3.0 is now stable: nothing in it breaks before 2.0. It is the
 same API as 0.3.0 — Roave BC Check reports no break between the two — and it was checked
-by installing 0.3.0 from Packagist into a Doctrine project (kimai) and a Laravel one
-(koel), wired by the README alone: neither needed an `@internal` class, and both reported
+by installing 0.3.0 from Packagist into a Doctrine project and a Laravel one, wired by the
+README alone: neither needed an `@internal` class, and both reported
 what the source build had reported. [UPGRADING.md](UPGRADING.md#what-is-public) lists the
 API, and the two things a minor release may still change.
 

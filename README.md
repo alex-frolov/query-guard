@@ -37,9 +37,9 @@ query-guard
       from src/Controller/TimesheetController.php:212 App\Timesheet\RateService::calculate
 ```
 
-Those two are real: the numbers above come from running query-guard over
-[Kimai](https://github.com/kimai/kimai)'s controller suite. 207 findings in 21 distinct
-places, including three rate lookups per timesheet on every flush.
+Those two are real: the numbers above come from running query-guard over the controller
+suite of an open-source Symfony application. 207 findings in 21 distinct places,
+including three rate lookups per timesheet on every flush.
 
 The line under a finding is where the query left from; the `from` lines above it are who
 asked for it. The two are rarely the same place — a lazy association is touched inside a

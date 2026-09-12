@@ -16,7 +16,7 @@ namespace QueryGuard;
  * `--parallel`, with nothing anywhere saying that 79% of the run had been overwritten.
  *
  * ParaTest hands every worker a token through the environment, and projects already lean
- * on it to keep their databases apart (`dbname_suffix` on Sulu). The same token keeps the
+ * on it to keep their databases apart (DoctrineBundle's `dbname_suffix`, for one). The same token keeps the
  * reports apart: `%token%` inside a configured path is replaced with it.
  *
  * `TEST_TOKEN` is a small number reused as workers come and go, `UNIQUE_TEST_TOKEN` is
