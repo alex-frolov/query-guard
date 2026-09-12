@@ -2,12 +2,16 @@
 
 ## Supported versions
 
-While the package is `0.x`, only the most recent release receives fixes. There are no
-maintained branches behind it.
+Only the most recent minor release receives fixes, as a patch release on top of it. There
+are no maintained branches behind it: a fix for 0.3 is not backported to 0.2.
 
 | Version | Supported |
 |---|---|
-| 0.2.x | ✅ |
+| 0.3.x | ✅ |
+| < 0.3 | ❌ |
+
+From 1.0 the same rule applies within 1.x — only the latest `1.y` receives fixes — and 0.x
+is no longer supported at all once 1.0.0 is out.
 
 ## Reporting a vulnerability
 

@@ -14,7 +14,7 @@
             <parameter name="select-star" value="true"/>
             <parameter name="large-tables" value="invoices, orders"/>
             <parameter name="query-in-loop-threshold" value="5"/>
-            <parameter name="duplicate-threshold" value="3"/>
+            <parameter name="duplicate-query-threshold" value="3"/>
             <parameter name="baseline" value="tests/EndToEnd/Fixture/Tier1/baseline.json"/>
         </bootstrap>
     </extensions>

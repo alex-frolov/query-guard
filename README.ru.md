@@ -499,7 +499,7 @@ call site внутри этого пакета, а не в самой мигра
 | `fail-on` | Минимальная строгость, на которой `strict` валит прогон: `error`, `warning`, `info` | `warning` |
 | `baseline` | Путь к файлу baseline | не задан |
 | `n-plus-one-threshold` | Со скольких повторов считать N+1 | `3` |
-| `duplicate-threshold` | Со скольких повторов считать дублем | `5` |
+| `duplicate-query-threshold` | Со скольких повторов считать дублем. До 2.0 читается и старое имя `duplicate-threshold` — с уведомлением, что его пора переименовать | `5` |
 | `query-in-loop-threshold` | Со скольких запросов из одного места сообщать | `5` |
 | `max-queries` | Бюджет запросов на тело теста — `setUp()` считается отдельно и в бюджет не входит | не задан, правило молчит |
 | `max-trace-queries` | Предохранитель для огромного теста: после стольких запросов трейс перестаёт держать события, и правила видят только начало теста — усечённый тест громко об этом говорит в сводке. На `query-count` не влияет: он считает настоящий итог независимо | не задан, ограничения нет |
@@ -730,7 +730,7 @@ baseline прописываем сразу: шаг 5 запишет в него 
         <parameter name="mode" value="report"/>
         <parameter name="baseline" value="tests/query-guard-baseline.json"/>
         <parameter name="n-plus-one-threshold" value="3"/>
-        <parameter name="duplicate-threshold" value="5"/>
+        <parameter name="duplicate-query-threshold" value="5"/>
         <parameter name="query-in-loop-threshold" value="5"/>
         <parameter name="max-queries" value="50"/>
         <parameter name="select-star" value="true"/>
@@ -838,7 +838,7 @@ positive по `n-plus-one`/`duplicate-query` на ваших же данных.
     <bootstrap class="QueryGuard\Extension">
         <parameter name="mode" value="report"/>
         <parameter name="n-plus-one-threshold" value="3"/>
-        <parameter name="duplicate-threshold" value="5"/>
+        <parameter name="duplicate-query-threshold" value="5"/>
         <parameter name="query-in-loop-threshold" value="5"/>
         <parameter name="max-queries" value="30"/>
         <parameter name="select-star" value="true"/>

@@ -14,7 +14,7 @@
             <parameter name="max-queries" value="2"/>
             <!-- this suite is about trace boundaries and attributes; tier 1 rules are covered in Tier1 -->
             <parameter name="query-in-loop-threshold" value="50"/>
-            <parameter name="duplicate-threshold" value="50"/>
+            <parameter name="duplicate-query-threshold" value="50"/>
         </bootstrap>
     </extensions>
 </phpunit>

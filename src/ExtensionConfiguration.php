@@ -90,7 +90,7 @@ final readonly class ExtensionConfiguration
             maxQueries: self::positiveInt($parameters, 'max-queries', null, 1, $warnings),
             maxTraceQueries: self::positiveInt($parameters, 'max-trace-queries', null, 1, $warnings),
             nPlusOneThreshold: self::positiveInt($parameters, 'n-plus-one-threshold', NPlusOneRule::DEFAULT_THRESHOLD, 2, $warnings) ?? NPlusOneRule::DEFAULT_THRESHOLD,
-            duplicateThreshold: self::positiveInt($parameters, 'duplicate-threshold', DuplicateQueryRule::DEFAULT_THRESHOLD, 2, $warnings) ?? DuplicateQueryRule::DEFAULT_THRESHOLD,
+            duplicateThreshold: self::duplicateThreshold($parameters, $warnings),
             queryInLoopThreshold: self::positiveInt($parameters, 'query-in-loop-threshold', QueryInLoopRule::DEFAULT_THRESHOLD, 2, $warnings) ?? QueryInLoopRule::DEFAULT_THRESHOLD,
             selectStar: self::bool($parameters, 'select-star', $warnings),
             largeTables: self::list($parameters, 'large-tables'),
@@ -106,6 +106,34 @@ final readonly class ExtensionConfiguration
             jsonReportPath: $parameters->has('report-json') ? trim($parameters->get('report-json')) : '',
             warnings: $warnings,
         );
+    }
+
+    /**
+     * `duplicate-query-threshold`, read under its old name `duplicate-threshold` too.
+     *
+     * The old name was the one threshold not named after its rule — `n-plus-one-threshold`
+     * and `query-in-loop-threshold` are — and parameter names are public API, so 1.0 was the
+     * last point where fixing it cost nothing. Dropping the old name outright would not
+     * be a loud break but a silent one: PHPUnit offers no way to list the parameters that
+     * were written, so an unknown name is ignored and the rule quietly returns to its
+     * default. Until 2.0 the old name is read, and the summary asks for the rename.
+     *
+     * @param list<string> $warnings
+     */
+    private static function duplicateThreshold(ParameterCollection $parameters, array &$warnings): int
+    {
+        $name = 'duplicate-query-threshold';
+
+        if ($parameters->has('duplicate-threshold')) {
+            if ($parameters->has($name)) {
+                $warnings[] = 'duplicate-threshold is the old name of duplicate-query-threshold, and both are set — duplicate-threshold was ignored; remove it.';
+            } else {
+                $warnings[] = 'duplicate-threshold is the old name of duplicate-query-threshold — it still works, but will stop in 2.0; rename it.';
+                $name = 'duplicate-threshold';
+            }
+        }
+
+        return self::positiveInt($parameters, $name, DuplicateQueryRule::DEFAULT_THRESHOLD, 2, $warnings) ?? DuplicateQueryRule::DEFAULT_THRESHOLD;
     }
 
     /**

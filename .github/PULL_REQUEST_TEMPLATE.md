@@ -17,8 +17,9 @@ the same reason the code will end up carrying.
 - [ ] Both READMEs are updated, or neither needed it — `README.md` and `README.ru.md` are
       kept heading for heading, and a change reaching only one will be lost
 - [ ] `CHANGELOG.md` has an entry under `Unreleased`
-- [ ] If the Roave BC job reports a break, it is in `CHANGELOG.md` and `UPGRADING.md`.
-      **A break is not a blocker before 1.0; a break missing from those files is.**
+- [ ] If the Roave BC job reports a break, it is intended: an `ignored-regex` for it is in
+      `.roave-backward-compatibility-check.xml`, and it is described in `CHANGELOG.md` and
+      `UPGRADING.md`. **An unintended break is fixed, not recorded.**
 
 ## For a change to a rule
 

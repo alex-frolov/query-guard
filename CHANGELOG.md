@@ -6,6 +6,17 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `duplicate-query-threshold`, the threshold of `duplicate-query` under a name that matches
+  its rule, as `n-plus-one-threshold` and `query-in-loop-threshold` already did.
+
+### Deprecated
+
+- `duplicate-threshold`. It is still read, and the summary asks for the rename; it stops
+  being read in 2.0. When both names are set, `duplicate-query-threshold` wins and the old
+  one is called out as ignored.
+
 ## [0.3.0] - 2026-09-13
 
 ### Added

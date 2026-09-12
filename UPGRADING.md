@@ -4,11 +4,12 @@ What breaks between versions, and what to do about it. Every entry here also app
 [CHANGELOG.md](CHANGELOG.md); this file exists to carry the instructions, which a
 changelog entry has no room for.
 
-While the package is `0.x` the public API is still being cut, and breaks are allowed
-between minor versions. CI runs
+0.3.0 drew the public API, listed below, and 1.0 freezes it. Since 0.3.0 CI runs
 [Roave BC Check](https://github.com/Roave/BackwardCompatibilityCheck) against the most
-recent tag on every pull request, so a break is visible in the change that causes it —
-and lands here before it reaches anyone's upgrade.
+recent tag on every pull request and fails the build on a break, so a break reaches a
+release only as a deliberate decision — and lands here before it reaches anyone's upgrade.
+Something public that has to go is deprecated in a minor release first, and removed only
+in the next major.
 
 ## What is public
 
@@ -81,6 +82,22 @@ used to print and pass — on Eloquent, a run that could not fail at all. Severi
 part of the signature, so a finding already in the baseline stays silenced; what fails is
 what was never baselined. Before such an upgrade, run once with `mode="report"` and look at
 the `[error]` lines, or regenerate the baseline if they are all known.
+
+## Unreleased
+
+### `duplicate-threshold` is now `duplicate-query-threshold`
+
+Rename the parameter in `phpunit.xml`:
+
+```xml
+<parameter name="duplicate-query-threshold" value="5"/>
+```
+
+Nothing breaks if you do not: the old name is still read until 2.0, and every run says so
+in the summary. It is not dropped at once because PHPUnit gives an extension no way to list
+the parameters that were written — an unknown name is ignored, and the rule would quietly
+fall back to its default of 5 without a word. If both names are set, the new one wins and
+the summary says the old one was ignored.
 
 ## 0.3.0
 

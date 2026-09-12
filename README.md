@@ -512,7 +512,7 @@ depending on a parameter that has nothing to do with it.
 | `fail-on` | Lowest severity `strict` fails on: `error`, `warning`, `info` | `warning` |
 | `baseline` | Path to the baseline file | not set |
 | `n-plus-one-threshold` | Repeats before it counts as N+1 | `3` |
-| `duplicate-threshold` | Repeats before it counts as a duplicate | `5` |
+| `duplicate-query-threshold` | Repeats before it counts as a duplicate. Until 2.0 the old name `duplicate-threshold` is read too, with a notice asking for the rename | `5` |
 | `query-in-loop-threshold` | Queries from one place before it is reported | `5` |
 | `max-queries` | Query budget per test body — `setUp()` is counted separately and never charged to it | not set, rule silent |
 | `max-trace-queries` | Safety valve for a huge test: past this many queries a test's trace stops holding events, so the rules see only the head of it — a truncated test says so in the summary. `query-count` is unaffected: it keeps the real total regardless | not set, no limit |
@@ -743,7 +743,7 @@ baseline path right away — step 5 writes to it:
         <parameter name="mode" value="report"/>
         <parameter name="baseline" value="tests/query-guard-baseline.json"/>
         <parameter name="n-plus-one-threshold" value="3"/>
-        <parameter name="duplicate-threshold" value="5"/>
+        <parameter name="duplicate-query-threshold" value="5"/>
         <parameter name="query-in-loop-threshold" value="5"/>
         <parameter name="max-queries" value="50"/>
         <parameter name="select-star" value="true"/>
@@ -853,7 +853,7 @@ triaging:
     <bootstrap class="QueryGuard\Extension">
         <parameter name="mode" value="report"/>
         <parameter name="n-plus-one-threshold" value="3"/>
-        <parameter name="duplicate-threshold" value="5"/>
+        <parameter name="duplicate-query-threshold" value="5"/>
         <parameter name="query-in-loop-threshold" value="5"/>
         <parameter name="max-queries" value="30"/>
         <parameter name="select-star" value="true"/>

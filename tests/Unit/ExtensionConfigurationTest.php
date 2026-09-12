@@ -40,6 +40,7 @@ final class ExtensionConfigurationTest extends TestCase
             'max-queries' => '50',
             'max-trace-queries' => '20000',
             'n-plus-one-threshold' => '4',
+            'duplicate-query-threshold' => '7',
             'select-star' => 'yes',
             'tier2' => 'On',
             'large-tables' => ' users , orders ,, ',
@@ -51,6 +52,7 @@ final class ExtensionConfigurationTest extends TestCase
         self::assertSame(50, $config->maxQueries);
         self::assertSame(20000, $config->maxTraceQueries);
         self::assertSame(4, $config->nPlusOneThreshold);
+        self::assertSame(7, $config->duplicateThreshold);
         self::assertTrue($config->selectStar);
         self::assertTrue($config->tier2);
         self::assertSame(['users', 'orders'], $config->largeTables);
@@ -154,6 +156,41 @@ final class ExtensionConfigurationTest extends TestCase
         self::assertSame(Severity::Warning, $config->failOn);
         self::assertCount(1, $config->warnings);
         self::assertStringContainsString('fail-on="critical" is not a severity', $config->warnings[0]);
+    }
+
+    /**
+     * Dropping the old name would be a silent break: PHPUnit cannot list the parameters
+     * that were written, so the rule would quietly fall back to its default.
+     */
+    public function testTheOldDuplicateThresholdNameStillWorksAndAsksForTheRename(): void
+    {
+        $config = self::configure(['duplicate-threshold' => '8']);
+
+        self::assertSame(8, $config->duplicateThreshold);
+        self::assertCount(1, $config->warnings);
+        self::assertStringContainsString('duplicate-threshold is the old name of duplicate-query-threshold', $config->warnings[0]);
+        self::assertStringContainsString('rename it', $config->warnings[0]);
+    }
+
+    public function testWithBothNamesTheNewOneWinsAndTheOldOneIsCalledOut(): void
+    {
+        $config = self::configure(['duplicate-threshold' => '8', 'duplicate-query-threshold' => '9']);
+
+        self::assertSame(9, $config->duplicateThreshold);
+        self::assertCount(1, $config->warnings);
+        self::assertStringContainsString('duplicate-threshold was ignored', $config->warnings[0]);
+    }
+
+    /**
+     * An unreadable value under the old name is still reported under the name written.
+     */
+    public function testAnUnreadableValueUnderTheOldNameNamesTheOldName(): void
+    {
+        $config = self::configure(['duplicate-threshold' => 'lots']);
+
+        self::assertSame(5, $config->duplicateThreshold);
+        self::assertCount(2, $config->warnings);
+        self::assertStringContainsString('duplicate-threshold="lots"', $config->warnings[1]);
     }
 
     public function testWarningsAccumulate(): void

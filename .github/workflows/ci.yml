@@ -313,14 +313,14 @@ jobs:
       - name: Install Roave BC Check
         run: composer global require --no-interaction --no-progress roave/backward-compatibility-check
 
-      # Roave answers "I found breaks" with exit code 3. Before 1.0 that is information,
-      # not a failure, so the step tells 3 apart from the tool actually falling over and
-      # reports the findings in the run summary.
+      # Roave answers "I found breaks" with exit code 3, and since 0.3.0 that fails the
+      # build. 0.3.0 drew the public API that 1.0 freezes, so from there on a break is a
+      # decision, not a side effect: it goes into `.roave-backward-compatibility-check.xml`
+      # as an `ignored-regex`, next to the change that makes it, where review sees it.
       #
-      # `continue-on-error: true` would be the one-line version and was what this job used
-      # first. It is worse: it paints the check red on every run that finds anything, and
-      # a check that is always red is a check nobody reads by the time 1.0 makes it mean
-      # something. To make breaks blocking at 1.0, drop the `3` from the condition below.
+      # The exit code is still read by hand rather than left to `set -e`: a failing step
+      # has to render the report into the run summary first, or the red check says that
+      # something broke without saying what.
       #
       # `--install-development-dependencies` because the ORMs are dev dependencies here:
       # without them the adapters' parent classes cannot be resolved and the comparison
@@ -360,12 +360,15 @@ jobs:
             if [ "$status" -eq 0 ]; then
               echo "Nothing on this branch breaks the released API."
             else
-              echo "This branch breaks the API released in \`${tag}\`. Before 1.0 that is allowed —"
-              echo "but every line below has to appear in \`CHANGELOG.md\` before this is merged."
+              echo "This branch breaks the API released in \`${tag}\`, and the check fails on it."
+              echo "If the break is intended, add an \`ignored-regex\` for each line below to"
+              echo "\`.roave-backward-compatibility-check.xml\` and describe it in \`CHANGELOG.md\` and \`UPGRADING.md\`."
               echo
               sed -n '/^# /,$p' bc.md
             fi
           } | tee -a "$GITHUB_STEP_SUMMARY"
+
+          exit "$status"
 
   tier2:
     name: Tier 2 / ${{ matrix.platform }}

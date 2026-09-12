@@ -95,16 +95,20 @@ written against the same seams the package publishes, and when a seam moves with
 the suite still passes — it is exercising the fixture, not the package. Its `ignoreErrors`
 entries are for intentional test idioms only, each with the reason next to it.
 
-**Backward compatibility is checked, and does not block — yet.** CI runs
+**Backward compatibility is checked, and blocks.** CI runs
 [Roave BC Check](https://github.com/Roave/BackwardCompatibilityCheck) against the most
-recent tag and prints what a release from this branch would break. While the package is
-0.x that job is informational: the seams are still being cut, and `OrmAdapter` and
-`PlanProvider` have already changed on purpose. The job exists so a break is visible in
-the pull request that causes it and reaches the CHANGELOG, rather than reaching a user's
-upgrade. **A reported break is not a blocker; a reported break missing from the CHANGELOG
-is.** The findings are rendered into the run summary, grouped as added / changed /
-removed — read them there rather than in the log. At 1.0, drop the `3` from the exit-code
-condition in the workflow and breaks start failing the build.
+recent tag, and a break fails the build. Until 0.3.0 the job was informational, because
+the seams were still being cut — `OrmAdapter` and `PlanProvider` changed on purpose more
+than once. 0.3.0 drew the public API (see [UPGRADING.md](UPGRADING.md#what-is-public))
+that 1.0 freezes, and from there a break has to be a decision rather than a side effect.
+The findings are rendered into the run summary, grouped as added / changed / removed —
+read them there rather than in the log.
+
+An intended break is recorded, not waved through. Add an `ignored-regex` for each reported
+line to `.roave-backward-compatibility-check.xml` in the repository root, in the same pull
+request, and describe the break in `CHANGELOG.md` and `UPGRADING.md`. The file is where a
+reviewer sees that the break was meant. After 1.0 such an entry means a major release, so
+it belongs in a pull request that is headed for one.
 
 Two details of how it is wired, both learned the hard way:
 
@@ -118,23 +122,26 @@ Two details of how it is wired, both learned the hard way:
   were noise. It also runs as root over a checkout owned by the runner, which git refuses
   to read at all. The global install carries a current parser and runs as the right user;
   the same comparison then reports 14 lines, 12 of them real.
-- The step reads Roave's exit code itself instead of using `continue-on-error`. Roave
-  answers "I found breaks" with `3`, which before 1.0 is information rather than failure,
-  so the step treats `3` as success and anything else as the tool falling over. The
-  one-line `continue-on-error` version was tried first and is worse: it paints the check
-  red on every run that finds anything, and a check that is always red is a check nobody
-  reads by the time 1.0 makes it mean something.
+- The step reads Roave's exit code itself instead of leaving it to the shell. Roave
+  answers "I found breaks" with `3`, and a failing step still has to write the report into
+  the run summary first — otherwise the red check says that something broke without saying
+  what. Any other non-zero code is reported as the tool itself falling over. (While the
+  job was informational, `continue-on-error` was tried first and was worse: it painted the
+  check red on every run that found anything, and a check that is always red is a check
+  nobody reads.)
 
 `--install-development-dependencies` is needed because the ORMs are dev dependencies
 here: without them the adapters' parent classes cannot be resolved, and the tool skips
 those classes instead of judging them.
 
-**Public API is removed before 1.0, not after.** Roave BC Check reports what a release
-from the branch would break, and while the package is 0.x that is information rather than
-a blocker — but the window closes. A method nothing calls is a method the project will be
-supporting for years if it is still there at 1.0, so an unused seam is deleted rather
-than kept "in case". Whatever goes gets an entry in `CHANGELOG.md` under `Removed` and,
-if there is anything to say about migrating, in `UPGRADING.md`.
+**Public API is not removed in a minor release.** A method nothing calls is a method the
+project supports for years once it is public, which is why 0.3.0 marked everything outside
+the list in UPGRADING.md `@internal` rather than keeping it "in case". What is public now
+leaves in two steps: deprecated in a minor release, with a notice or a `@deprecated` tag
+that says what to use instead, and removed in the next major. `duplicate-threshold` →
+`duplicate-query-threshold` is the example: the old name is still read, and the summary
+asks for the rename. Both steps get an entry in `CHANGELOG.md` (`Deprecated`, then
+`Removed`) and, if there is anything to say about migrating, in `UPGRADING.md`.
 
 **A new class starts `@internal`.** The public API is the short list in
 [UPGRADING.md](UPGRADING.md#what-is-public), and Roave BC Check treats any class without

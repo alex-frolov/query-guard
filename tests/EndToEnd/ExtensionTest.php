@@ -147,7 +147,7 @@ final class ExtensionTest extends TestCase
             <parameter name="select-star" value="true"/>
             <parameter name="large-tables" value="invoices, orders"/>
             <parameter name="query-in-loop-threshold" value="5"/>
-            <parameter name="duplicate-threshold" value="3"/>
+            <parameter name="duplicate-query-threshold" value="3"/>
             %s%s
         </bootstrap>
     </extensions>
