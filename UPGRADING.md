@@ -4,12 +4,12 @@ What breaks between versions, and what to do about it. Every entry here also app
 [CHANGELOG.md](CHANGELOG.md); this file exists to carry the instructions, which a
 changelog entry has no room for.
 
-0.3.0 drew the public API, listed below, and 1.0 freezes it. Since 0.3.0 CI runs
-[Roave BC Check](https://github.com/Roave/BackwardCompatibilityCheck) against the most
-recent tag on every pull request and fails the build on a break, so a break reaches a
-release only as a deliberate decision — and lands here before it reaches anyone's upgrade.
-Something public that has to go is deprecated in a minor release first, and removed only
-in the next major.
+The public API, listed below, follows semantic versioning since 1.0.0: nothing in it breaks
+before 2.0. CI runs [Roave BC Check](https://github.com/Roave/BackwardCompatibilityCheck)
+against the most recent tag on every pull request and fails the build on a break, so a
+break reaches a release only as a deliberate decision headed for a major — and lands here
+before it reaches anyone's upgrade. Something public that has to go is deprecated in a
+minor release first, and removed only in the next major.
 
 ## What is public
 
@@ -83,7 +83,10 @@ part of the signature, so a finding already in the baseline stays silenced; what
 what was never baselined. Before such an upgrade, run once with `mode="report"` and look at
 the `[error]` lines, or regenerate the baseline if they are all known.
 
-## Unreleased
+## 1.0.0
+
+Coming from 0.3, the API is the same: Roave BC Check reports no break between 0.3.0 and
+1.0.0. The one thing to act on is a renamed parameter, and even that keeps working.
 
 ### `duplicate-threshold` is now `duplicate-query-threshold`
 

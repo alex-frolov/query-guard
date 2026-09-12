@@ -2,16 +2,15 @@
 
 ## Supported versions
 
-Only the most recent minor release receives fixes, as a patch release on top of it. There
-are no maintained branches behind it: a fix for 0.3 is not backported to 0.2.
+Only the most recent minor release of 1.x receives fixes, as a patch release on top of it.
+There are no maintained branches behind it: a fix made on 1.2 is not backported to 1.1 —
+within 1.x an upgrade breaks nothing, so the way to a fix is the latest `1.y`.
 
 | Version | Supported |
 |---|---|
-| 0.3.x | ✅ |
-| < 0.3 | ❌ |
-
-From 1.0 the same rule applies within 1.x — only the latest `1.y` receives fixes — and 0.x
-is no longer supported at all once 1.0.0 is out.
+| latest 1.y | ✅ |
+| older 1.y | ❌ — upgrade within 1.x |
+| 0.x | ❌ |
 
 ## Reporting a vulnerability
 

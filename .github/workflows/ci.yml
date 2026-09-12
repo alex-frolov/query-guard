@@ -314,7 +314,7 @@ jobs:
         run: composer global require --no-interaction --no-progress roave/backward-compatibility-check
 
       # Roave answers "I found breaks" with exit code 3, and since 0.3.0 that fails the
-      # build. 0.3.0 drew the public API that 1.0 freezes, so from there on a break is a
+      # build. 0.3.0 drew the public API and 1.0.0 made it stable, so a break is a
       # decision, not a side effect: it goes into `.roave-backward-compatibility-check.xml`
       # as an `ignored-regex`, next to the change that makes it, where review sees it.
       #

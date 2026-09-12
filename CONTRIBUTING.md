@@ -99,16 +99,16 @@ entries are for intentional test idioms only, each with the reason next to it.
 [Roave BC Check](https://github.com/Roave/BackwardCompatibilityCheck) against the most
 recent tag, and a break fails the build. Until 0.3.0 the job was informational, because
 the seams were still being cut — `OrmAdapter` and `PlanProvider` changed on purpose more
-than once. 0.3.0 drew the public API (see [UPGRADING.md](UPGRADING.md#what-is-public))
-that 1.0 freezes, and from there a break has to be a decision rather than a side effect.
+than once. 0.3.0 drew the public API (see [UPGRADING.md](UPGRADING.md#what-is-public)),
+1.0.0 made it stable, and a break has to be a decision rather than a side effect.
 The findings are rendered into the run summary, grouped as added / changed / removed —
 read them there rather than in the log.
 
 An intended break is recorded, not waved through. Add an `ignored-regex` for each reported
 line to `.roave-backward-compatibility-check.xml` in the repository root, in the same pull
 request, and describe the break in `CHANGELOG.md` and `UPGRADING.md`. The file is where a
-reviewer sees that the break was meant. After 1.0 such an entry means a major release, so
-it belongs in a pull request that is headed for one.
+reviewer sees that the break was meant. Such an entry means a major release, so it belongs
+in a pull request that is headed for one.
 
 Two details of how it is wired, both learned the hard way:
 

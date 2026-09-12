@@ -6,6 +6,15 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-09-13
+
+The public API drawn in 0.3.0 is now stable: nothing in it breaks before 2.0. It is the
+same API as 0.3.0 — Roave BC Check reports no break between the two — and it was checked
+by installing 0.3.0 from Packagist into a Doctrine project (kimai) and a Laravel one
+(koel), wired by the README alone: neither needed an `@internal` class, and both reported
+what the source build had reported. [UPGRADING.md](UPGRADING.md#what-is-public) lists the
+API, and the two things a minor release may still change.
+
 ### Added
 
 - `duplicate-query-threshold`, the threshold of `duplicate-query` under a name that matches
@@ -16,6 +25,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 - `duplicate-threshold`. It is still read, and the summary asks for the rename; it stops
   being read in 2.0. When both names are set, `duplicate-query-threshold` wins and the old
   one is called out as ignored.
+
+### Changed
+
+- A break of the public API fails the build: Roave BC Check in CI is blocking rather than
+  informational. An intended break has to be recorded in
+  `.roave-backward-compatibility-check.xml`, which after 1.0 means a major release.
+- Security fixes go to the latest `1.y` only; 0.x is no longer supported.
 
 ## [0.3.0] - 2026-09-13
 
@@ -46,5 +62,6 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   Nothing passed it, and a replacement could only reproduce or disable the built-in
   enrichment.
 
-[Unreleased]: https://github.com/alex-frolov/query-guard/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/alex-frolov/query-guard/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/alex-frolov/query-guard/compare/v0.3.0...v1.0.0
 [0.3.0]: https://github.com/alex-frolov/query-guard/compare/v0.2.1...v0.3.0
