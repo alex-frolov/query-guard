@@ -10,6 +10,8 @@ namespace QueryGuard\Platform;
  * `EXPLAIN` output is `mixed` all the way down, and without a wrapper like this one
  * plan parsing turns into a scattering of casts, any of which can quietly produce the
  * wrong thing. Here "the wrong thing" becomes `null`, and the caller has to deal with it.
+ *
+ * @internal
  */
 final class Json
 {

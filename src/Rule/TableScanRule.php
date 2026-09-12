@@ -21,6 +21,8 @@ use QueryGuard\Platform\ScanType;
  *
  * When there is no index at all it is `no-possible-index` — a different diagnosis: there
  * you create an index, here you work out why the scan reads everything anyway.
+ *
+ * @internal
  */
 final class TableScanRule extends PlanRule
 {

@@ -12,6 +12,8 @@ use QueryGuard\Query\QueryEvent;
  * An adapter lives in the application's configuration and is always active, whereas the
  * extension only exists under PHPUnit. Without this stub an ordinary application run
  * would fail on its very first query.
+ *
+ * @internal
  */
 final class NullQueryCollector implements QueryCollector
 {

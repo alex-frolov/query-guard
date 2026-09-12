@@ -13,6 +13,8 @@ use QueryGuard\Query\SqlText;
  * the query — comments and string literals removed. Without that the helpers answer
  * questions about text rather than about SQL: `WHERE name = 'LIMIT'` used to count as a
  * query with a `LIMIT`, and an `IN` list inside a comment as a batch fetch.
+ *
+ * @internal
  */
 final class Sql
 {

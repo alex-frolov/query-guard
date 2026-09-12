@@ -13,6 +13,8 @@ use Doctrine\DBAL\ParameterType;
  * DBAL 3. The test is a fact taken from the code rather than a version number from
  * composer: in DBAL 4 `ParameterType` became an enum, and that is precisely why the
  * signatures of `Statement::bindValue()` and `Statement::execute()` diverged.
+ *
+ * @internal
  */
 final class Dbal
 {

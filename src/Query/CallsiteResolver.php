@@ -32,6 +32,8 @@ namespace QueryGuard\Query;
  * dozen framework files over and over: seven regular expressions per frame turn into one
  * hash lookup after the first sighting. The cache is bounded by the number of distinct
  * files in the project.
+ *
+ * @internal
  */
 final class CallsiteResolver
 {

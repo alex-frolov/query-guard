@@ -6,6 +6,9 @@ namespace QueryGuard\Report;
 
 use QueryGuard\Mode;
 
+/**
+ * @internal
+ */
 interface Reporter
 {
     public function report(Report $report, Mode $mode): void;

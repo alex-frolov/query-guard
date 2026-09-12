@@ -33,6 +33,8 @@ use QueryGuard\Adapter\QueryEnricher;
  *
  * Nothing found means empty annotations and the rule falls back to its heuristic.
  * One must never be silently passed off as the other.
+ *
+ * @internal
  */
 final class DoctrineEnricher implements QueryEnricher
 {

@@ -18,6 +18,8 @@ use QueryGuard\TestOptions;
  * The phase is not the only thing that decides. A `FixtureFilter`, when the project
  * configured one, moves a query made *during* a test into the fixture bucket because of
  * where it came from — see that class for why the phase alone was not enough.
+ *
+ * @internal
  */
 final class DefaultQueryCollector implements QueryCollector
 {

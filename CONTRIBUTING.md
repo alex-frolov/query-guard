@@ -136,6 +136,12 @@ supporting for years if it is still there at 1.0, so an unused seam is deleted r
 than kept "in case". Whatever goes gets an entry in `CHANGELOG.md` under `Removed` and,
 if there is anything to say about migrating, in `UPGRADING.md`.
 
+**A new class starts `@internal`.** The public API is the short list in
+[UPGRADING.md](UPGRADING.md#what-is-public), and Roave BC Check treats any class without
+the tag as part of it. Leaving the tag off is how a helper becomes something to support
+for years; making a class public later breaks nothing, so that is the cheap direction. A
+class that joins the public API is added to that list in the same pull request.
+
 **Both READMEs are edited together.** `README.md` and `README.ru.md` are kept heading for
 heading; a change to one that does not reach the other is a change that will be lost.
 

@@ -13,6 +13,8 @@ use QueryGuard\Rule\RuleEngine;
 
 /**
  * Closes the trace and runs the rules over it.
+ *
+ * @internal
  */
 final class FinishedSubscriber implements PHPUnitFinishedSubscriber
 {

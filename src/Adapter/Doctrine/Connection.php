@@ -15,6 +15,8 @@ use Doctrine\DBAL\Driver\Statement as DriverStatement;
  * Only what has identical signatures in DBAL 3 and 4 lives here: `prepare()` and
  * `query()`. `exec()`, whose return type diverged (`int` vs `int|string`), lives
  * in the subclasses.
+ *
+ * @internal
  */
 abstract class Connection extends AbstractConnectionMiddleware
 {

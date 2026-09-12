@@ -14,6 +14,8 @@ use QueryGuard\Platform\PlanNode;
  * A platform-specific rule: PostgreSQL's closest equivalent (`HashAggregate`) is a
  * normal way to group, and complaining about it would mean false positives. So on
  * PostgreSQL the rule does not work — and says so.
+ *
+ * @internal
  */
 final class TemporaryTableRule extends PlanRule
 {

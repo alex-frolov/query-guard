@@ -12,6 +12,8 @@ use QueryGuard\Mode;
  * Order is part of the contract rather than an accident: a reporter that fails says so by
  * putting a notice on the `Report`, and only a reporter running before the console one
  * can still have that notice printed.
+ *
+ * @internal
  */
 final class Reporters implements Reporter
 {

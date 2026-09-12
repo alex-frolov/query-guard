@@ -23,6 +23,8 @@ use QueryGuard\Query\CallsiteResolver;
  *
  * What can only be known at the end is which platforms actually answered, and that is
  * what `notices()` is for.
+ *
+ * @internal
  */
 final class Tier2Factory
 {

@@ -13,10 +13,10 @@ performance problems hiding behind them — N+1 above all.
 Install it, add six lines to `phpunit.xml`, and run your suite as usual. No assertions
 in your tests, no separate command, no code changes.
 
-> **Status: 0.2.1, the first public release.** Everything documented below works and is
+> **Status: 0.2.1, the latest release.** Everything documented below works and is
 > covered by tests, run on PHPUnit 10.5–13, Doctrine ORM 2–3, DBAL 3–4, MySQL and
-> PostgreSQL. The API may still shift before 1.0 — see
-> [UPGRADING.md](UPGRADING.md) for what has moved so far.
+> PostgreSQL. The public API is listed in [UPGRADING.md](UPGRADING.md#what-is-public),
+> along with what has moved so far; it may still shift in 0.3, and 1.0 freezes it.
 
 ## What it looks like
 
@@ -147,6 +147,11 @@ nothing.
 
 If you already know where the query came from, pass `callsite:` instead of `stack:` and
 skip the stack walk entirely — that is what both built-in adapters do.
+
+`QueryGuard::collector()`, `QueryCollector::record()`, `QueryEvent` and `Callsite` are
+the public API for this, and the release notes treat them as such. Everything else under
+`QueryGuard\` is marked `@internal` — the adapter interfaces included — and can change in
+any release; [UPGRADING.md](UPGRADING.md) lists what is public and why the rest is not.
 
 ## Rules
 
@@ -315,6 +320,7 @@ The summary always reports how many findings the baseline silenced.
 
 ```json
 {
+    "format-version": 1,
     "generated-at": "2026-09-03T10:12:00+00:00",
     "platform": "mysql",
     "comment": "query-guard baseline: the findings listed here do not fail the run...",
@@ -335,6 +341,11 @@ of the statement, and the same DQL becomes different SQL per dialect — Doctrin
 findings differed that way while the other 112 matched byte for byte. So a run against a database
 the baseline did not come from says so, rather than leaving you to work out why known
 findings arrived as new ones.
+
+`format-version` is the shape of the file. It goes up only when a field is removed or
+starts to mean something else — never for a new one — and a release that meets a number
+it does not know silences nothing and says so in the summary, rather than guessing what
+the entries mean. A file without the field is format 1.
 
 The **key** is what silences a finding; everything under it is there so the file can be
 read in a pull request. `place` carries the line number the key deliberately leaves out,
@@ -369,6 +380,7 @@ Anything automated should read this instead:
 
 ```json
 {
+    "format-version": 1,
     "generated-at": "2026-09-03T10:12:00+00:00",
     "worker": null,
     "mode": "strict",
@@ -398,6 +410,9 @@ Anything automated should read this instead:
 ```
 
 Paths are relative to the working directory, so the file survives the trip to CI.
+`format-version` goes up only when a field is removed or starts to mean something else,
+never for a new one: a script that checks it keeps working across releases until the
+report actually changes under it.
 `failing` answers the only question a CI script usually has — whether this run is about to
 exit non-zero — without it having to reimplement the `fail-on` comparison. `worker` is
 `null` in an ordinary run and carries the ParaTest token when the file holds one worker's
@@ -524,7 +539,9 @@ adapter recognising lazy initialisation in the stack — an uninitialised Doctri
 `PersistentCollection` is visible there as an object. The Eloquent adapter does not
 enrich its events yet, so every `n-plus-one` it reports is a `warning` from the query's
 shape. Until that changes, `fail-on="error"` on a Laravel project is a run that cannot
-fail: use the baseline to draw the line instead.
+fail: use the baseline to draw the line instead. When it does change, those findings
+become `error` in a minor release — [UPGRADING.md](UPGRADING.md#what-a-minor-release-may-still-change)
+says what that means for a run with `fail-on="error"`.
 
 A value that cannot be read — `mode="strickt"`, `max-queries="lots"` — produces a warning
 in the summary naming the parameter, the value and what was used instead. It never falls
@@ -1038,6 +1055,11 @@ normalised SQL. Two refactors therefore move entries:
 
 Both look identical from the outside: findings reappear in code you did not think you had
 touched, and the same number of entries starts reporting that it silenced nothing.
+
+An upgrade can do the same without any refactor: a minor release may improve how SQL is
+normalised, which changes fingerprints — the SQL dialect is the first candidate. Its
+[UPGRADING.md](UPGRADING.md#what-a-minor-release-may-still-change) entry says when, and the
+fix below is the same.
 
 The fix is the same in both cases and it is deliberately blunt — regenerate from a full
 run and read the diff:

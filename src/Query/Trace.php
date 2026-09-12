@@ -19,6 +19,8 @@ use QueryGuard\TestOptions;
  * call site the project has declared to be preparation — see `Collector\FixtureFilter`.
  * The second kind arrives through `recordFixture()` and is the reason the list is not
  * readonly.
+ *
+ * @internal
  */
 final class Trace
 {

@@ -14,6 +14,8 @@ use QueryGuard\Collector\QueryCollector;
  * `DB::listen` runs after the application boots — and Laravel rebuilds the application
  * for every test. That is why `install()` must be **idempotent**: the extension calls
  * it once at start-up and again before every test.
+ *
+ * @internal
  */
 interface OrmAdapter
 {

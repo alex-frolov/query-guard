@@ -15,6 +15,8 @@ use QueryGuard\Query\Trace;
  * **Off by default, and that is deliberate.** `select *` is Eloquent's default mode, so
  * on any Laravel project this rule would fire on every single query and drown out
  * everything else. Turn it on knowingly, with the `select-star` parameter.
+ *
+ * @internal
  */
 final class SelectStarRule implements Rule
 {

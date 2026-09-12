@@ -23,6 +23,8 @@ namespace QueryGuard;
  * unique for the whole run. The short one is preferred on purpose — a report is written
  * once, at the end of a worker's life, when the token it started with is still its own,
  * and `var/query-guard-3.json` is a name a person can read in a CI log.
+ *
+ * @internal
  */
 final readonly class Worker
 {

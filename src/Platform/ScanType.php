@@ -7,6 +7,8 @@ namespace QueryGuard\Platform;
 /**
  * How a plan node fetches rows. Normalised: MySQL and PostgreSQL do not share a single
  * word of vocabulary here, and the rules need one language.
+ *
+ * @internal
  */
 enum ScanType: string
 {

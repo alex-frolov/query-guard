@@ -9,6 +9,8 @@ namespace QueryGuard\Platform;
  *
  * MariaDB returns a similar but not identical JSON, which is why the tree walk tolerates
  * missing keys instead of following a strict schema.
+ *
+ * @internal
  */
 final class MySqlPlatformDriver implements PlatformDriver
 {

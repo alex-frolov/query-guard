@@ -7,7 +7,7 @@ maintained branches behind it.
 
 | Version | Supported |
 |---|---|
-| 0.1.x | ✅ |
+| 0.2.x | ✅ |
 
 ## Reporting a vulnerability
 

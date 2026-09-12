@@ -18,6 +18,8 @@ namespace QueryGuard\Query;
  * with a different fingerprint every time. `n-plus-one` and `duplicate-query` group by
  * fingerprint — on such a project both saw a suite full of unique queries and reported
  * nothing at all.
+ *
+ * @internal
  */
 final class Fingerprint implements \Stringable
 {

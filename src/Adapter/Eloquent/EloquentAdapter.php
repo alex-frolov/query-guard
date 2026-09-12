@@ -45,6 +45,8 @@ use QueryGuard\QueryGuard;
  * resolver asks the container for `events` first, then the manager for the dispatcher its
  * connections share, and only then falls back to a connection-level `listen()` — which
  * says out loud, in the summary, how much of the project it can see.
+ *
+ * @internal
  */
 final class EloquentAdapter implements OrmAdapter
 {

@@ -30,6 +30,8 @@ use QueryGuard\Query\Trace;
  * Distinguishing the two would need to know where one unit of work ends, which a trace
  * does not carry. Adjacency is not it either — the same suite's media scanner is a real
  * loop whose queries are just as tightly packed.
+ *
+ * @internal
  */
 final class QueryInLoopRule implements Rule
 {

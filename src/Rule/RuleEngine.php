@@ -13,6 +13,8 @@ use QueryGuard\Query\Trace;
  * Every rule is here from the start. There used to be a second, deferred set for tier 2,
  * which could not be built until a database connection existed — that constraint is gone
  * now that `PlanProvider` resolves a connection when it first sees a query from it.
+ *
+ * @internal
  */
 final class RuleEngine
 {

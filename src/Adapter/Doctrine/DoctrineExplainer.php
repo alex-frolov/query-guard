@@ -14,6 +14,8 @@ use QueryGuard\Adapter\Explainer;
  * "The same" is a requirement, not a convenience: test harnesses such as
  * `dama/doctrine-test-bundle` keep each test inside a transaction that is rolled back,
  * and the data only exists there. A separate connection would explain an empty database.
+ *
+ * @internal
  */
 final class DoctrineExplainer implements Explainer
 {

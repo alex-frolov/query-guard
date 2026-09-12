@@ -15,6 +15,8 @@ use QueryGuard\Query\Trace;
  * The table list is given by hand (`large-tables`), and without it the rule stays
  * silent. Detecting size from statistics belongs to tier 2 and a reference database:
  * on a three-row test database "a large table" cannot be determined at all.
+ *
+ * @internal
  */
 final class NoLimitRule implements Rule
 {

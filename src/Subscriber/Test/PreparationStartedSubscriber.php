@@ -16,6 +16,8 @@ use QueryGuard\Collector\DefaultQueryCollector;
  * Adapters are also reinstalled here: Laravel rebuilds the application for every test,
  * and a `DB::listen` listener disappears along with the old one. For Doctrine the call
  * does nothing — adapters hook in at different moments, and that is their own business.
+ *
+ * @internal
  */
 final class PreparationStartedSubscriber implements PHPUnitPreparationStartedSubscriber
 {

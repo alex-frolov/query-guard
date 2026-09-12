@@ -17,6 +17,8 @@ use QueryGuard\TestOptions;
  *
  * This is the decision that false positives hinge on: a factory creating 50 entities in
  * `setUp()` produces 50 identical INSERTs from one callsite, i.e. a perfect false N+1.
+ *
+ * @internal
  */
 final class PreparedSubscriber implements PHPUnitPreparedSubscriber
 {

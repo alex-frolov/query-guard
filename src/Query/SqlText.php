@@ -31,6 +31,8 @@ namespace QueryGuard\Query;
  * early on the other spelling, and everything after it — a real comment marker or the
  * next literal — stops being recognisable, the exact silent-misdiagnosis shape this
  * class exists to close off.
+ *
+ * @internal
  */
 final class SqlText
 {

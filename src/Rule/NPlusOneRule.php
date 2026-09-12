@@ -35,6 +35,8 @@ use QueryGuard\Query\Trace;
  * Only reads are considered. A run against a real project showed why that is not a
  * detail: controller tests often build fixtures inside the test body, and without this
  * condition the first "N+1" reported was 502 identical INSERTs from a tag factory.
+ *
+ * @internal
  */
 final class NPlusOneRule implements Rule
 {

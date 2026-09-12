@@ -13,6 +13,8 @@ use QueryGuard\Report\Report;
  *
  * Two classes and not one because PHPUnit gives every event its own interface with its
  * own `notify()` signature; a single class cannot implement both.
+ *
+ * @internal
  */
 final class ErroredSubscriber implements PHPUnitErroredSubscriber
 {

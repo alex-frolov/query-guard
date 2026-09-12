@@ -16,6 +16,8 @@ use QueryGuard\Report\Report;
  * PHPUnit's code — turning a `2` (errors) into a `1` (failures) and losing the more
  * specific answer. So when PHPUnit already has a reason to fail, query-guard keeps out
  * of the way and only prints its summary.
+ *
+ * @internal
  */
 final class FailedSubscriber implements PHPUnitFailedSubscriber
 {

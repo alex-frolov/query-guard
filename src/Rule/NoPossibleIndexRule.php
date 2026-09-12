@@ -18,6 +18,8 @@ use QueryGuard\Platform\PlanNode;
  *
  * Silent on PostgreSQL, which does not answer "which indexes could have applied" —
  * and explicitly so: the summary says as much out loud.
+ *
+ * @internal
  */
 final class NoPossibleIndexRule extends PlanRule
 {

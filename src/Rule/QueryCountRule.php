@@ -14,6 +14,8 @@ use QueryGuard\Query\Trace;
  *
  * The simplest tier 1 rule. Without a threshold in the configuration it stays silent:
  * a tool that turns half of a suite red on its first install gets removed the same day.
+ *
+ * @internal
  */
 final class QueryCountRule implements Rule
 {

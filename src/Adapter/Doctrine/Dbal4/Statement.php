@@ -11,6 +11,8 @@ use QueryGuard\Adapter\Doctrine\Statement as BaseStatement;
 /**
  * DBAL 4: `bindValue()` returns nothing and requires the `ParameterType` enum, and
  * `execute()` takes no bound values.
+ *
+ * @internal
  */
 final class Statement extends BaseStatement
 {

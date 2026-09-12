@@ -14,6 +14,8 @@ use QueryGuard\Adapter\Explainer;
  * which database answered; the driver knows how to read that database's `EXPLAIN`.
  * Pairing them per connection is what stops a MySQL plan from being parsed as PostgreSQL
  * on a project that has both.
+ *
+ * @internal
  */
 final readonly class PlanSource
 {

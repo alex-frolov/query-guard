@@ -12,6 +12,8 @@ use QueryGuard\Attribute\IgnoreRule;
  *
  * Read once per test and stored on the trace, so a rule gets everything it needs from
  * `Trace` without reaching for reflection itself.
+ *
+ * @internal
  */
 final readonly class TestOptions
 {

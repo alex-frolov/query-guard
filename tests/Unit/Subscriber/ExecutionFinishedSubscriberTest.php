@@ -469,6 +469,57 @@ final class ExecutionFinishedSubscriberTest extends TestCase
     }
 
     /**
+     * A baseline from a newer release silences nothing, so every known finding arrives as
+     * new — which must not happen without the run saying why.
+     */
+    public function testABaselineInAFormatThisReleaseCannotReadIsFlagged(): void
+    {
+        $path = sys_get_temp_dir().'/query-guard-format-'.getmypid().'.json';
+        file_put_contents($path, '{"format-version": 2, "findings": {}}');
+
+        try {
+            $this->notify($this->adapters(), baselinePath: $path, baseline: Baseline::fromFile($path));
+
+            self::assertStringContainsString('has format-version 2, which this release of query-guard cannot read', $this->notices());
+            self::assertStringContainsString('none of its entries were applied', $this->notices());
+        } finally {
+            @unlink($path);
+        }
+    }
+
+    public function testAReadableBaselineIsNotWorthAFormatNotice(): void
+    {
+        $path = sys_get_temp_dir().'/query-guard-format-ok-'.getmypid().'.json';
+        file_put_contents($path, '{"format-version": 1, "findings": {}}');
+
+        try {
+            $this->notify($this->adapters(), baselinePath: $path, baseline: Baseline::fromFile($path));
+
+            self::assertStringNotContainsString('format-version', $this->notices());
+        } finally {
+            @unlink($path);
+        }
+    }
+
+    /**
+     * Regeneration replaces the file whatever format it was in; complaining about the
+     * old one would be noise at the exact moment it is being fixed.
+     */
+    public function testRegenerationDoesNotComplainAboutTheFormatItReplaces(): void
+    {
+        $path = sys_get_temp_dir().'/query-guard-format-regen-'.getmypid().'.json';
+        file_put_contents($path, '{"format-version": 2, "findings": {}}');
+
+        try {
+            $this->notify($this->adapters(), generated: Baseline::empty(), baselinePath: $path, baseline: Baseline::fromFile($path));
+
+            self::assertStringNotContainsString('cannot read', $this->notices());
+        } finally {
+            @unlink($path);
+        }
+    }
+
+    /**
      * While the baseline is being regenerated nothing is matched against it, so every
      * entry would look unused.
      */

@@ -94,6 +94,15 @@ final class JsonReporterTest extends TestCase
     }
 
     /**
+     * A script reading the report runs against whatever release CI installs next; the
+     * number is what lets it refuse a shape it was not written for.
+     */
+    public function testTheFormatVersionIsOnTheReport(): void
+    {
+        self::assertSame(1, $this->write(new Report())['format-version']);
+    }
+
+    /**
      * `report` mode never reports itself as failing, whatever was found.
      */
     public function testReportModeIsNeverFailing(): void

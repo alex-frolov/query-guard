@@ -20,6 +20,8 @@ use QueryGuard\Query\QueryEvent;
  *
  * The cache is not an optimisation but a condition of being usable at all: without it a
  * suite issuing 25 000 queries would trigger 25 000 EXPLAINs and double its own runtime.
+ *
+ * @internal
  */
 final class PlanProvider
 {

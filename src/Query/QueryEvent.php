@@ -44,7 +44,7 @@ final class QueryEvent
     /**
      * @param array<array-key, mixed>    $params
      * @param list<array<string, mixed>> $stack       the result of debug_backtrace(); leave empty when $callsite is given
-     * @param array<string, mixed>       $annotations enrichment from the adapter (entity, association, proxy flag)
+     * @param array<string, mixed>       $annotations enrichment from the adapter (entity, association, proxy flag); the keys are not part of the public API
      * @param Callsite|null              $callsite    already resolved by the adapter — then $stack is not needed
      */
     public function __construct(
@@ -58,11 +58,17 @@ final class QueryEvent
     ) {
     }
 
+    /**
+     * @internal
+     */
     public function fingerprint(): Fingerprint
     {
         return $this->fingerprint ??= Fingerprint::of($this->sql);
     }
 
+    /**
+     * @internal
+     */
     public function callsite(CallsiteResolver $resolver): ?Callsite
     {
         if (null !== $this->callsite) {
@@ -100,6 +106,8 @@ final class QueryEvent
      * from tracing middleware or sqlcommenter must not turn two identical queries into
      * two different shapes, or `duplicate-query` stops seeing them — and `n-plus-one`
      * starts misreading the same duplicates as lazy loading instead.
+     *
+     * @internal
      */
     public function shape(): string
     {
@@ -128,12 +136,17 @@ final class QueryEvent
      * by a `--` line — sqlcommenter-style tracing emits them — read as a write, and
      * a read misfiled that way disappears silently: out of `n-plus-one`, out of
      * `duplicate-query`, and out of tier 2, which never even asks for its plan.
+     *
+     * @internal
      */
     public function isSelect(): bool
     {
         return 1 === preg_match('#^\s*(?:(?:/\*.*?\*/|--[^\n]*\n)\s*)*(SELECT|WITH)\b#is', $this->sql);
     }
 
+    /**
+     * @internal
+     */
     public function annotation(string $name): mixed
     {
         return $this->annotations[$name] ?? null;

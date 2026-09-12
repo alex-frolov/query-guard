@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace QueryGuard\Collector;
 
+/**
+ * @internal
+ */
 enum Phase
 {
     /** Outside a test: bootstrap, data providers, the gaps between tests. */

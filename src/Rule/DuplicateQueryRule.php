@@ -18,6 +18,8 @@ use QueryGuard\Query\Trace;
  * diagnosis (a missing cache or a lost reference), different fix. Conflating the two is
  * exactly where the closest competitor goes wrong: it calls a match of SQL *and* bound
  * values a duplicate, and believes it is catching N+1 that way.
+ *
+ * @internal
  */
 final class DuplicateQueryRule implements Rule
 {

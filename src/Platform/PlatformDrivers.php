@@ -6,6 +6,8 @@ namespace QueryGuard\Platform;
 
 /**
  * Picks a platform driver by platform name.
+ *
+ * @internal
  */
 final class PlatformDrivers
 {

@@ -13,6 +13,8 @@ use QueryGuard\Query\Trace;
  *
  * The notices are not decoration. When an ORM or a platform is unsupported, the summary
  * has to say so out loud: silent degradation is exactly how a tool loses trust.
+ *
+ * @internal
  */
 final class Report
 {

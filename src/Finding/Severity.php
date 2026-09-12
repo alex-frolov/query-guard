@@ -11,6 +11,8 @@ namespace QueryGuard\Finding;
  * adapter recognised lazy loading and named the association, `warning` that only the
  * shape heuristic fired, `info` that the finding is a style note nobody should be failed
  * over by default.
+ *
+ * @internal
  */
 enum Severity: string
 {

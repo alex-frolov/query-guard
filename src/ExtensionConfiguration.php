@@ -39,6 +39,8 @@ use QueryGuard\Rule\QueryInLoopRule;
  * a value that silently changed behaviour on a large suite would be worse than the memory
  * it saves. Once set, a trace past that many queries stops holding events for the rules
  * to see — `Query\Trace::isTruncated()` — and the test's notice says so out loud.
+ *
+ * @internal
  */
 final readonly class ExtensionConfiguration
 {

@@ -14,6 +14,8 @@ use Doctrine\DBAL\Driver\Statement as DriverStatement;
  * Bound values accumulate here. Unlike Doctrine's own logging middleware, the
  * measurement wraps AROUND execution rather than happening before it — that is the only
  * way to get a duration and a truthful order of queries.
+ *
+ * @internal
  */
 abstract class Statement extends AbstractStatementMiddleware
 {

@@ -14,6 +14,8 @@ namespace QueryGuard\Platform;
  * PostgreSQL reports nothing resembling `possible_keys`: it has no notion of "indexes
  * that could have applied but were not chosen". Hence `reportsPossibleIndexes()` is
  * `false` here, and the `no-possible-index` rule has to say it cannot judge.
+ *
+ * @internal
  */
 final class PostgresPlatformDriver implements PlatformDriver
 {

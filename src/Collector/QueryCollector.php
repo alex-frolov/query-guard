@@ -12,6 +12,10 @@ use QueryGuard\Query\QueryEvent;
  * Each adapter decides for itself how and when to hook in — a DBAL middleware goes in
  * before the connection is created, `DB::listen` after the application boots — but they
  * all write here. The PHPUnit extension knows nothing about how any of them installed.
+ *
+ * Public for calling, not for implementing: code outside the package reaches the
+ * collector through `QueryGuard::collector()` and has no way to put its own in place.
+ * A method may be added in a minor release.
  */
 interface QueryCollector
 {

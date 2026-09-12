@@ -42,6 +42,8 @@ use QueryGuard\Query\QueryEvent;
  * be. A project that has configured it resolves the callsite once, at record time, and
  * the resolver is the very one the rules use later — `QueryEvent` memoises per resolver,
  * so the second lookup is free.
+ *
+ * @internal
  */
 final class FixtureFilter
 {

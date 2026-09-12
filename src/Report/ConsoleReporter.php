@@ -13,6 +13,8 @@ use QueryGuard\Mode;
  *
  * The stream is injected rather than opened here: otherwise there would be no way to
  * test the output. The trick is borrowed from `ergebnis/phpunit-slow-test-detector`.
+ *
+ * @internal
  */
 final class ConsoleReporter implements Reporter
 {

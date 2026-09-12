@@ -21,6 +21,8 @@ use QueryGuard\Collector\QueryCollector;
  *
  *     QueryGuard\Adapter\Doctrine\Middleware:
  *         tags: ['doctrine.middleware']
+ *
+ * @internal
  */
 final class DoctrineAdapter implements OrmAdapter
 {

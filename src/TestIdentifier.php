@@ -10,6 +10,8 @@ namespace QueryGuard;
  * A value of our own rather than `PHPUnit\Event\Code\Test`: neither the core nor the
  * rules should depend on the runner, which is an axis that varies independently of the
  * ORM and of the database platform.
+ *
+ * @internal
  */
 final readonly class TestIdentifier implements \Stringable
 {

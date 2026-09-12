@@ -32,6 +32,8 @@ use QueryGuard\Adapter\Explainer;
  * Rows come back as `stdClass` — Eloquent sets `PDO::FETCH_OBJ` on every prepared
  * statement (`Connection::prepared()`), EXPLAIN included. `Explainer::run()` promises
  * arrays keyed by column name, so each row is cast before it goes any further.
+ *
+ * @internal
  */
 final class EloquentExplainer implements Explainer
 {

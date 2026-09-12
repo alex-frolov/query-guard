@@ -24,9 +24,21 @@ use QueryGuard\Mode;
  * Paths are relative to the working directory, for the same reason the baseline's are:
  * the file is meant to travel to CI, and an absolute path from a developer's machine
  * means nothing there.
+ *
+ * @internal
  */
 final class JsonReporter implements Reporter
 {
+    /**
+     * The shape of the report, written into it as `format-version`.
+     *
+     * A script reading the file is written once and runs against whatever release CI
+     * installs next; the number is what lets it refuse a shape it was not written for
+     * instead of misreading one. Raised on an incompatible change alone — a field removed
+     * or renamed, a value that means something else. A new field is not one.
+     */
+    public const FORMAT_VERSION = 1;
+
     public function __construct(
         private readonly string $path,
         private readonly string $basePath = '',
@@ -38,6 +50,7 @@ final class JsonReporter implements Reporter
     public function report(Report $report, Mode $mode): void
     {
         $payload = [
+            'format-version' => self::FORMAT_VERSION,
             'generated-at' => date('c'),
             // null in an ordinary run; the ParaTest token when this file is one worker's
             // share of a parallel one, so that merged reports stay attributable

@@ -20,6 +20,8 @@ use QueryGuard\QueryGuard;
  * The stack is consumed here and thrown away: the enricher reads it, the callsite is
  * resolved from it, and neither the frames nor the objects inside them reach the event.
  * See `QueryEvent` for the measurement behind that.
+ *
+ * @internal
  */
 final class Recorder
 {

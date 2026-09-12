@@ -7,6 +7,9 @@ namespace QueryGuard\Adapter\Doctrine\Dbal4;
 use Doctrine\DBAL\Driver\Statement as DriverStatement;
 use QueryGuard\Adapter\Doctrine\Connection as BaseConnection;
 
+/**
+ * @internal
+ */
 final class Connection extends BaseConnection
 {
     public function exec(string $sql): int|string

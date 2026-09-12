@@ -78,6 +78,64 @@ final class BaselineTest extends TestCase
         self::assertSame('', Baseline::empty()->platform());
     }
 
+    /**
+     * The file is committed and outlives the release that wrote it; the number is how a
+     * later reader tells a file it understands from one it would only misread.
+     */
+    public function testTheFormatVersionIsStamped(): void
+    {
+        $this->path = tempnam(sys_get_temp_dir(), 'qg') ?: '';
+
+        self::assertTrue(Baseline::empty()->save($this->path));
+
+        $decoded = json_decode((string) file_get_contents($this->path), true);
+
+        self::assertIsArray($decoded);
+        self::assertSame(1, $decoded['format-version']);
+    }
+
+    /**
+     * Every baseline committed before the field existed has to keep working.
+     */
+    public function testAFileWithoutAFormatVersionIsReadAsTheFirstFormat(): void
+    {
+        $finding = $this->finding('n-plus-one', '/project/src/Repo.php', 'select a');
+        $this->path = $this->savedWith($finding, static function (array $decoded): array {
+            unset($decoded['format-version']);
+
+            return $decoded;
+        });
+
+        $loaded = Baseline::fromFile($this->path);
+
+        self::assertNull($loaded->unreadableFormat());
+        self::assertTrue($loaded->contains($finding));
+    }
+
+    /**
+     * A file from a newer release may mean something else by the same keys. Matching them
+     * anyway would silence findings by accident; the caller explains the empty result.
+     */
+    public function testAFormatThisReleaseCannotReadSilencesNothing(): void
+    {
+        $finding = $this->finding('n-plus-one', '/project/src/Repo.php', 'select a');
+
+        foreach (['2' => 2, '"1"' => '1', '0' => 0, 'null' => null] as $expected => $format) {
+            $this->path = $this->savedWith($finding, static function (array $decoded) use ($format): array {
+                $decoded['format-version'] = $format;
+
+                return $decoded;
+            });
+
+            $loaded = Baseline::fromFile($this->path);
+
+            self::assertSame((string) $expected, $loaded->unreadableFormat());
+            self::assertSame(0, $loaded->count());
+            self::assertFalse($loaded->contains($finding));
+            self::assertSame('', $loaded->platform());
+        }
+    }
+
     public function testUnknownFindingIsNotSuppressed(): void
     {
         $baseline = Baseline::empty();
@@ -142,6 +200,27 @@ final class BaselineTest extends TestCase
         $baseline->add(new Finding('rule', new TestIdentifier('id', 'T::t'), 'message'));
 
         self::assertSame(0, $baseline->count());
+    }
+
+    /**
+     * A baseline holding one finding, saved and then rewritten by hand.
+     *
+     * @param callable(array<array-key, mixed>): array<array-key, mixed> $edit
+     */
+    private function savedWith(Finding $finding, callable $edit): string
+    {
+        $path = '' === $this->path ? (tempnam(sys_get_temp_dir(), 'qg') ?: '') : $this->path;
+
+        $baseline = Baseline::empty();
+        $baseline->add($finding);
+        self::assertTrue($baseline->save($path, 'mysql'));
+
+        $decoded = json_decode((string) file_get_contents($path), true);
+        self::assertIsArray($decoded);
+
+        file_put_contents($path, json_encode($edit($decoded)));
+
+        return $path;
     }
 
     private function finding(string $rule, string $file, string $fingerprint): Finding

@@ -11,6 +11,8 @@ use QueryGuard\Collector\QueryCollector;
 /**
  * The adapters active during a run. There can be several at once — a project using
  * both Doctrine and Eloquent is rare, but nothing here forbids it.
+ *
+ * @internal
  */
 final class AdapterSet
 {

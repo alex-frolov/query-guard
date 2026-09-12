@@ -13,6 +13,8 @@ use QueryGuard\Platform\PlanNode;
  *
  * On a small result this is cheap and there is nothing to fix, so the size threshold is
  * as mandatory here as it is for `table-scan`.
+ *
+ * @internal
  */
 final class FilesortRule extends PlanRule
 {

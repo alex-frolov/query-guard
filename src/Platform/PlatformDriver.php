@@ -10,6 +10,8 @@ namespace QueryGuard\Platform;
  * Independent of the ORM. Doctrine on PostgreSQL and Eloquent on PostgreSQL share the
  * same plan parsing — mixing the two axes up would produce four implementations instead
  * of two plus two.
+ *
+ * @internal
  */
 interface PlatformDriver
 {

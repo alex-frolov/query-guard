@@ -18,6 +18,8 @@ use QueryGuard\Query\Trace;
  * tool reported `error: Full table scan` on a five-row table because InnoDB's own
  * estimate lied (it said 15 against a threshold of 10). Without volume, tier 2 is not
  * merely useless — it is harmful.
+ *
+ * @internal
  */
 abstract class PlanRule implements Rule
 {

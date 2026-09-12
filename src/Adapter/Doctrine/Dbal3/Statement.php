@@ -11,6 +11,8 @@ use QueryGuard\Adapter\Doctrine\Statement as BaseStatement;
 /**
  * DBAL 3: `bindValue()` returns bool and takes an untyped `$type`, and `execute()`
  * can take the bound values directly.
+ *
+ * @internal
  */
 final class Statement extends BaseStatement
 {

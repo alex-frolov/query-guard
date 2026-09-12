@@ -10,6 +10,8 @@ namespace QueryGuard\Adapter;
  * Tier 2 needs it: EXPLAIN has to go through the same connection and the same
  * transaction, otherwise it looks at the wrong data. Parsing the plan is
  * `PlatformDriver`'s job, not this one's.
+ *
+ * @internal
  */
 interface Explainer
 {

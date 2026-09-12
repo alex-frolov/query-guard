@@ -9,6 +9,8 @@ use QueryGuard\TestIdentifier;
 
 /**
  * A single hit of a rule.
+ *
+ * @internal
  */
 final readonly class Finding
 {

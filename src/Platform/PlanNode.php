@@ -6,6 +6,8 @@ namespace QueryGuard\Platform;
 
 /**
  * A single plan node, in terms shared by every platform.
+ *
+ * @internal
  */
 final readonly class PlanNode
 {

@@ -16,6 +16,8 @@ namespace QueryGuard\Adapter;
  *
  * A separate interface rather than a method on the interceptor: the interceptor lives
  * in the driver layer and knows nothing about the ORM, while enrichment knows nothing else.
+ *
+ * @internal
  */
 interface QueryEnricher
 {

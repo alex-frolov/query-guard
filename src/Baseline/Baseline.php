@@ -15,9 +15,23 @@ use QueryGuard\Finding\Finding;
  *
  * The key is `rule|file|fingerprint`, with no line number and no test name: both move
  * for harmless reasons and would reset the baseline for nothing.
+ *
+ * @internal
  */
 final class Baseline
 {
+    /**
+     * The shape of the file, written into it as `format-version`.
+     *
+     * The file is committed and outlives the release that wrote it, so a reader has to
+     * be able to tell a file it understands from one it would only misread. Raised on an
+     * incompatible change alone — a field removed or renamed, a key that means something
+     * else. A new field is not one: a reader that does not know it ignores it.
+     *
+     * A file without the field predates it and is format 1.
+     */
+    public const FORMAT_VERSION = 1;
+
     /**
      * Entries matched during this run.
      *
@@ -31,12 +45,14 @@ final class Baseline
 
     /**
      * @param array<string, array<array-key, mixed>> $entries
-     * @param string                                 $platform the platform the file was generated on — see `platform()`
+     * @param string                                 $platform         the platform the file was generated on — see `platform()`
+     * @param string|null                            $unreadableFormat see `unreadableFormat()`
      */
     private function __construct(
         private array $entries,
         private readonly string $basePath = '',
         private readonly string $platform = '',
+        private readonly ?string $unreadableFormat = null,
     ) {
     }
 
@@ -64,6 +80,20 @@ final class Baseline
         return $this->platform;
     }
 
+    /**
+     * The `format-version` of a file this release cannot read, as written in it; null
+     * when the file was read.
+     *
+     * Such a file silences nothing: its entries may mean something else under a format
+     * this code does not know, and matching them anyway would silence findings by
+     * accident. That makes every known finding look new, which is exactly the failure
+     * that must not arrive unexplained — so the caller says why.
+     */
+    public function unreadableFormat(): ?string
+    {
+        return $this->unreadableFormat;
+    }
+
     public static function fromFile(string $path, string $basePath = ''): self
     {
         if (!is_file($path)) {
@@ -80,6 +110,14 @@ final class Baseline
             $decoded = json_decode($raw, true, 512, \JSON_THROW_ON_ERROR);
         } catch (\JsonException) {
             return self::empty($basePath);
+        }
+
+        $format = \is_array($decoded) && \array_key_exists('format-version', $decoded) ? $decoded['format-version'] : 1;
+
+        if (!\is_int($format) || $format < 1 || $format > self::FORMAT_VERSION) {
+            // a value that came out of `json_decode()` always encodes back; `?:` would not
+            // do as the fallback, since `0` encodes to "0" and reads as false
+            return new self([], $basePath, unreadableFormat: (string) json_encode($format));
         }
 
         $platform = \is_array($decoded) ? ($decoded['platform'] ?? null) : null;
@@ -179,6 +217,7 @@ final class Baseline
         ksort($this->entries);
 
         $payload = [
+            'format-version' => self::FORMAT_VERSION,
             'generated-at' => date('c'),
             'platform' => $platform,
             'comment' => 'query-guard baseline: the findings listed here do not fail the run. '

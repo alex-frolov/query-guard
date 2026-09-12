@@ -7,6 +7,8 @@ namespace QueryGuard\Platform;
 /**
  * A normalised query plan. Rules only ever see this, never the raw `EXPLAIN` output —
  * otherwise every rule would have to be written once per platform.
+ *
+ * @internal
  */
 final readonly class Plan
 {

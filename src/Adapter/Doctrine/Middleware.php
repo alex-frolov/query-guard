@@ -6,7 +6,6 @@ namespace QueryGuard\Adapter\Doctrine;
 
 use Doctrine\DBAL\Driver as DriverInterface;
 use Doctrine\DBAL\Driver\Middleware as MiddlewareInterface;
-use QueryGuard\Adapter\QueryEnricher;
 
 /**
  * Our own DBAL middleware — a Driver → Connection → Statement decorator.
@@ -27,12 +26,19 @@ final class Middleware implements MiddlewareInterface
 {
     private readonly Recorder $recorder;
 
-    public function __construct(?QueryEnricher $enricher = null)
+    /**
+     * Takes no arguments, and used to take an optional `QueryEnricher`.
+     *
+     * Nothing ever passed one, and nothing useful could have: the only reader of the
+     * annotations is `n-plus-one`, and it reads the keys `DoctrineEnricher` writes. A
+     * replacement could at best reproduce that class, and at worst switch it off — lazy
+     * loading stops being told apart from a batch loader, and every N+1 drops back to a
+     * warning. That is not an extension point, and at 1.0 it would have become one to
+     * support for years.
+     */
+    public function __construct()
     {
-        // enrichment is on by default: without it the `n-plus-one` rule cannot tell lazy
-        // loading from a batch loader called several times, and a project should not have
-        // to wire anything by hand to get that
-        $this->recorder = new Recorder($enricher ?? new DoctrineEnricher());
+        $this->recorder = new Recorder(new DoctrineEnricher());
     }
 
     public function wrap(DriverInterface $driver): DriverInterface

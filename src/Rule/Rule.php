@@ -10,6 +10,8 @@ use QueryGuard\Query\Trace;
 /**
  * Rules only ever see `Trace`, `QueryEvent` and — in tier 2 — `Plan`, never a Doctrine
  * or Illuminate class. That is what makes them portable to a second ORM.
+ *
+ * @internal
  */
 interface Rule
 {

@@ -18,6 +18,8 @@ use QueryGuard\Rule\Tier2Factory;
 
 /**
  * The end-of-run summary and the exit code.
+ *
+ * @internal
  */
 final class ExecutionFinishedSubscriber implements PHPUnitExecutionFinishedSubscriber
 {
@@ -380,6 +382,31 @@ final class ExecutionFinishedSubscriber implements PHPUnitExecutionFinishedSubsc
         )];
     }
 
+    /**
+     * A baseline in a format this release cannot read silenced nothing, and the run has
+     * to say so: otherwise every known finding arrives as new with no hint why. The
+     * likely story is a newer query-guard on one machine and an older one on another.
+     *
+     * @return list<string>
+     */
+    private function formatNotices(): array
+    {
+        $format = null === $this->generated ? $this->baseline?->unreadableFormat() : null;
+
+        if (null === $format) {
+            return [];
+        }
+
+        return [sprintf(
+            "the baseline %s has format-version %s, which this release of query-guard cannot read (it reads up to %d), so none of its entries were applied.\n"
+            .'It was most likely written by a newer query-guard: upgrade to match, or regenerate the baseline with %s=1.',
+            $this->baselinePath,
+            $format,
+            Baseline::FORMAT_VERSION,
+            ExtensionConfiguration::GENERATE_BASELINE_ENV,
+        )];
+    }
+
     public function notify(ExecutionFinished $event): void
     {
         foreach ($this->adapterNotices() as $notice) {
@@ -393,6 +420,10 @@ final class ExecutionFinishedSubscriber implements PHPUnitExecutionFinishedSubsc
         }
 
         foreach ($this->tier2?->notices() ?? [] as $notice) {
+            $this->report->addNotice($notice);
+        }
+
+        foreach ($this->formatNotices() as $notice) {
             $this->report->addNotice($notice);
         }
 

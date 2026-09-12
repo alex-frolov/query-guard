@@ -11,6 +11,8 @@ use Doctrine\DBAL\Driver\Middleware\AbstractDriverMiddleware;
 /**
  * Returns a wrapped connection and, along the way, tells the adapter that interception
  * actually happened: until the first connection a middleware proves nothing.
+ *
+ * @internal
  */
 final class Driver extends AbstractDriverMiddleware
 {

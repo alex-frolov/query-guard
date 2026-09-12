@@ -27,16 +27,25 @@ final class QueryGuard
         return self::$collector ?? self::$null ??= new NullQueryCollector();
     }
 
+    /**
+     * @internal called by the extension when a run starts; feeding the collector needs only `collector()`
+     */
     public static function activate(QueryCollector $collector): void
     {
         self::$collector = $collector;
     }
 
+    /**
+     * @internal
+     */
     public static function deactivate(): void
     {
         self::$collector = null;
     }
 
+    /**
+     * @internal
+     */
     public static function isActive(): bool
     {
         return null !== self::$collector;

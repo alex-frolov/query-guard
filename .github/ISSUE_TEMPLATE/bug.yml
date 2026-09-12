@@ -60,7 +60,7 @@ body:
       description: >-
         PHP, PHPUnit, query-guard, and the ORM — `composer show phpunit/phpunit
         alex-frolov/query-guard doctrine/orm doctrine/dbal illuminate/database | head`
-      placeholder: 'PHP 8.3, PHPUnit 11.5, query-guard 0.1.0, Doctrine ORM 3.3 / DBAL 4.2'
+      placeholder: 'PHP 8.3, PHPUnit 11.5, query-guard 0.2.1, Doctrine ORM 3.3 / DBAL 4.2'
     validations:
       required: true
 
