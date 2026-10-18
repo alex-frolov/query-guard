@@ -126,26 +126,113 @@ final class Tier2FactoryTest extends TestCase
     }
 
     /**
+     * A unique-key lookup that found no row gives a plan with no table in it. It used to
+     * be counted as a failure — a quarter of all plans on a MySQL project — which made
+     * tier 2 look broken when there was simply nothing to judge.
+     */
+    public function testAPlanThatReadsNoTableIsNotAFailure(): void
+    {
+        $factory = self::factory(['primary' => 'mysql/no-matching-row', 'secondary' => 'mysql/no-tables-used']);
+        self::explainQueriesFrom($factory, ['primary', 'secondary']);
+
+        self::assertSame(
+            ["tier 2: 0 plans parsed, 2 had nothing to judge, 0 failed.\n"
+            .'Nothing to judge: the optimiser answered without reading a table — '
+            .'"no matching row in const table" (1), "No tables used" (1).'],
+            $factory->notices(),
+        );
+    }
+
+    /**
+     * A failure carries its cause to the summary. Before, `catch (\Throwable)` dropped it,
+     * and the only way to learn why a plan failed was to patch `vendor/`.
+     */
+    public function testTheFirstFailureOfEachKindReachesTheSummary(): void
+    {
+        $factory = self::factory(['primary' => 'mysql/throw', 'secondary' => 'mysql/garbage']);
+        self::explainQueriesFrom($factory, ['primary', 'secondary']);
+
+        $notices = $factory->notices();
+
+        self::assertSame('tier 2: 0 plans parsed, 2 failed.', $notices[0]);
+        self::assertStringContainsString('RuntimeException: SQLSTATE[42000]: syntax error', $notices[1]);
+        self::assertStringContainsString('unreadable plan: the plan was not JSON the driver could read: not a plan', $notices[1]);
+        self::assertStringNotContainsString('second line', $notices[1], 'only the first line of a message');
+    }
+
+    /**
+     * A derived table is read with `ALL` and has no `possible_keys` — by definition.
+     * On a live project that was a third of all `error` findings of tier 2. The verdict
+     * belongs to the tables inside the subquery, which here use their indexes.
+     */
+    public function testADerivedTableGetsNoIndexOrScanFinding(): void
+    {
+        $factory = self::factory(['primary' => 'mysql/derived-scan']);
+
+        self::assertSame([], self::explainQueriesFrom($factory, ['primary']));
+        self::assertSame(['tier 2: 1 plans parsed, 0 failed.'], $factory->notices());
+    }
+
+    /**
+     * `findAll()` on a lookup table reads every row, and no index could change that —
+     * yet it was "a scan with no alternative", 843 of 927 findings on one MySQL suite.
+     * With a condition and no index the finding stays.
+     */
+    public function testNoPossibleIndexJudgesOnlyFilteredScans(): void
+    {
+        $unfiltered = self::factory(['primary' => 'mysql/no-condition']);
+        self::assertSame([], self::explainQueriesFrom($unfiltered, ['primary']));
+
+        $filtered = self::factory(['primary' => 'mysql/no-index']);
+        $findings = self::explainQueriesFrom($filtered, ['primary']);
+
+        self::assertSame(['no-possible-index'], array_map(static fn ($f): string => $f->rule, $findings));
+        self::assertSame('no suitable index on "big" — a scan with no alternative', $findings[0]->message);
+    }
+
+    /**
+     * The plan names the table `big`; in this query that is an alias. The message names
+     * the table, the signature keeps the alias — existing baselines hold it.
+     */
+    public function testAMessageNamesTheTableBehindAnAlias(): void
+    {
+        $factory = self::factory(['primary' => 'mysql/no-index']);
+        $findings = self::explainQueriesFrom($factory, ['primary'], 'SELECT big.id FROM huge_table big WHERE big.plain_col = ?');
+
+        self::assertSame('no suitable index on "huge_table" (big) — a scan with no alternative', $findings[0]->message);
+        self::assertStringEndsWith('#big', $findings[0]->signature);
+    }
+
+    /**
      * Runs one SELECT per named connection through every tier 2 rule, which is what makes
      * the provider resolve those connections.
      *
      * @param list<string> $connections
+     *
+     * @return list<\QueryGuard\Finding\Finding>
      */
-    private static function explainQueriesFrom(Tier2Factory $factory, array $connections): void
-    {
+    private static function explainQueriesFrom(
+        Tier2Factory $factory,
+        array $connections,
+        string $sql = 'SELECT id, name FROM big WHERE plain_col = ?',
+    ): array {
         $trace = new Trace(new TestIdentifier('id', 'T::t'), TestOptions::none());
 
         foreach ($connections as $connection) {
             $trace->record(new QueryEvent(
-                sql: 'SELECT id, name FROM big WHERE plain_col = ?',
+                sql: $sql,
                 params: [42],
                 connection: $connection,
             ));
         }
 
+        $findings = [];
+
         foreach ($factory->rules() as $rule) {
-            iterator_to_array($rule->check($trace), false);
+            array_push($findings, ...iterator_to_array($rule->check($trace), false));
         }
+
+        return $findings;
     }
 
     /**
@@ -169,20 +256,37 @@ final class Tier2FactoryTest extends TestCase
 
         foreach ($platformByConnection as $connection => $platform) {
             $explainers[$connection] = new class($platform) implements Explainer {
-                public function __construct(private readonly string $platform)
+                private readonly string $platform;
+
+                private readonly string $fixture;
+
+                /**
+                 * @param string $spec `platform` or `platform/fixture`; the fixtures
+                 *                     `throw` and `garbage` stand for a failing EXPLAIN
+                 */
+                public function __construct(string $spec)
                 {
+                    [$this->platform, $this->fixture] = explode('/', $spec.'/no-index');
                 }
 
                 public function run(string $sql, array $params = []): array
                 {
-                    $fixture = \dirname(__DIR__, 2).'/Fixture/Explain/'.$this->platform.'/no-index.json';
-
                     // a size lookup rather than an EXPLAIN — PostgreSQL asks for one
                     if (!str_starts_with(ltrim($sql), 'EXPLAIN')) {
                         return [['rows' => 100000]];
                     }
 
-                    return [['plan' => (string) file_get_contents($fixture)]];
+                    if ('throw' === $this->fixture) {
+                        throw new \RuntimeException("SQLSTATE[42000]: syntax error\nsecond line");
+                    }
+
+                    if ('garbage' === $this->fixture) {
+                        return [['plan' => 'not a plan']];
+                    }
+
+                    $path = \dirname(__DIR__, 2).'/Fixture/Explain/'.$this->platform.'/'.$this->fixture.'.json';
+
+                    return [['plan' => (string) file_get_contents($path)]];
                 }
 
                 public function platform(): string

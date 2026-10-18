@@ -44,7 +44,7 @@ abstract class PlanRule implements Rule
             }
 
             foreach ($plan->nodes as $node) {
-                $message = $this->inspect($node, $plan);
+                $message = $this->inspect($node, $plan, self::describe($node, $event->sql));
 
                 if (null === $message) {
                     continue;
@@ -89,7 +89,23 @@ abstract class PlanRule implements Rule
     abstract protected function severity(): \QueryGuard\Finding\Severity;
 
     /**
+     * @param string $table the node's table as the message should name it — see describe()
+     *
      * @return string|null the finding text, or null when the node is fine
      */
-    abstract protected function inspect(PlanNode $node, Plan $plan): ?string;
+    abstract protected function inspect(PlanNode $node, Plan $plan, string $table): ?string;
+
+    /**
+     * `"settings_entry" (t0)` rather than `"t0"`.
+     *
+     * The text only. The signature keeps the name the plan gave (`fingerprint#t0`): it
+     * is stable, it is what existing baselines hold, and resolving it differently on a
+     * future change of the SQL helper must not unsilence anything.
+     */
+    private static function describe(PlanNode $node, string $sql): string
+    {
+        $table = Sql::tableForAlias($sql, $node->table);
+
+        return null === $table ? sprintf('"%s"', $node->table) : sprintf('"%s" (%s)', $table, $node->table);
+    }
 }

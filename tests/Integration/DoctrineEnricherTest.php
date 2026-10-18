@@ -18,6 +18,7 @@ use QueryGuard\Query\CallsiteResolver;
 use QueryGuard\Query\Trace;
 use QueryGuard\QueryGuard;
 use QueryGuard\Rule\NPlusOneRule;
+use QueryGuard\Rule\QueryInLoopRule;
 use QueryGuard\Test\Integration\Fixture\Customer;
 use QueryGuard\Test\Integration\Fixture\Order;
 use QueryGuard\TestIdentifier;
@@ -167,6 +168,104 @@ final class DoctrineEnricherTest extends TestCase
 
         // the point of resolving early is that the callsite still arrives
         self::assertGreaterThan(0, $resolved);
+    }
+
+    /**
+     * One `flush()` writes every pending change from one line: here twelve INSERTs of two
+     * shapes. Counted query by query that was a `query-in-loop` finding; it is one unit
+     * of work, and every statement of it carries the same commit.
+     */
+    public function testOneFlushIsOneUnitOfWork(): void
+    {
+        $trace = $this->openTrace();
+
+        for ($i = 1; $i <= 6; ++$i) {
+            $customer = new Customer('customer '.$i);
+            $order = new Order('order '.$i);
+            $order->customer = $customer;
+            $this->em->persist($customer);
+            $this->em->persist($order);
+        }
+
+        $this->em->flush();
+
+        $commits = [];
+
+        foreach ($trace->events() as $event) {
+            $commit = $event->annotation(DoctrineEnricher::COMMIT);
+            self::assertIsInt($commit, $event->sql);
+            $commits[$commit] = true;
+        }
+
+        self::assertCount(12, $trace->events());
+        self::assertCount(1, $commits);
+        self::assertSame([], iterator_to_array((new QueryInLoopRule(CallsiteResolver::default()))->check($trace), false));
+    }
+
+    /**
+     * The other half: a `flush()` inside a loop is a loop, and each pass is its own commit.
+     */
+    public function testFlushInsideALoopIsStillReported(): void
+    {
+        $trace = $this->openTrace();
+
+        for ($i = 1; $i <= 6; ++$i) {
+            $customer = new Customer('customer '.$i);
+            $order = new Order('order '.$i);
+            $order->customer = $customer;
+            $this->em->persist($customer);
+            $this->em->persist($order);
+            $this->em->flush();
+        }
+
+        $findings = iterator_to_array((new QueryInLoopRule(CallsiteResolver::default()))->check($trace), false);
+
+        self::assertCount(1, $findings);
+        self::assertSame('12 queries of 2 different shapes from one place, in 6 units of work (a Doctrine flush counts as one)', $findings[0]->message);
+    }
+
+    /**
+     * Under a test transaction that is rolled back afterwards every flush is nested, and
+     * DBAL nests it as a savepoint. Those statements belong to the harness — production
+     * opens a plain transaction that never shows up here — so they stay out of the trace,
+     * while each of them still starts a new commit.
+     */
+    public function testSavepointsOfANestedTransactionAreLeftOutOfTheTrace(): void
+    {
+        $this->em->getConnection()->beginTransaction();
+        $trace = $this->openTrace();
+
+        for ($i = 1; $i <= 6; ++$i) {
+            $customer = new Customer('customer '.$i);
+            $order = new Order('order '.$i);
+            $order->customer = $customer;
+            $this->em->persist($customer);
+            $this->em->persist($order);
+            $this->em->flush();
+        }
+
+        $this->em->getConnection()->rollBack();
+
+        foreach ($trace->events() as $event) {
+            self::assertStringNotContainsStringIgnoringCase('savepoint', $event->sql);
+        }
+
+        $findings = iterator_to_array((new QueryInLoopRule(CallsiteResolver::default()))->check($trace), false);
+
+        self::assertCount(12, $trace->events());
+        self::assertSame('12 queries of 2 different shapes from one place, in 6 units of work (a Doctrine flush counts as one)', $findings[0]->message);
+    }
+
+    public function testAReadIsNotPartOfACommit(): void
+    {
+        $this->seed();
+        $trace = $this->openTrace();
+
+        $this->em->getRepository(Customer::class)->findAll();
+
+        foreach ($trace->events() as $event) {
+            self::assertNull($event->annotation(DoctrineEnricher::COMMIT), $event->sql);
+        }
     }
 
     private function seed(): void

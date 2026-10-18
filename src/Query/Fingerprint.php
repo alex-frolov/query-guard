@@ -6,7 +6,7 @@ namespace QueryGuard\Query;
 
 /**
  * A normalised form of an SQL statement: comments removed, literals stripped,
- * `IN (?, ?)` lists collapsed, whitespace and case unified.
+ * `IN (?, ?)` lists and multi-row `VALUES` collapsed, whitespace and case unified.
  *
  * Needed twice over: to deduplicate identical queries and to detect N+1. This is exactly
  * where the closest competitor goes wrong — it compares SQL together with the bound
@@ -39,6 +39,16 @@ final class Fingerprint implements \Stringable
 
         // IN (?, ?, ?) → IN (?): list length must not spawn different fingerprints.
         $normalized = (string) preg_replace('/\bIN\s*\(\s*\?(?:\s*,\s*\?)*\s*\)/i', 'IN (?)', $normalized);
+
+        // VALUES (?, ?), (?, ?) → VALUES (?, ?): the same goes for the number of rows in a
+        // multi-row INSERT. Without it one `executeStatement()` writing batches of varying
+        // size came out as "9 queries of 3 different shapes". A tuple may hold one level of
+        // parentheses — `(?, NOW())`; deeper nesting is left as it is
+        $normalized = (string) preg_replace(
+            '/\bVALUES\s*(\((?:[^()]|\([^()]*\))*\))(?:\s*,\s*\((?:[^()]|\([^()]*\))*\))+/i',
+            'VALUES $1',
+            $normalized,
+        );
 
         $normalized = (string) preg_replace('/\s+/', ' ', $normalized);
         $normalized = rtrim(trim($normalized), ';');

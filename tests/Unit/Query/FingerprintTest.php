@@ -47,6 +47,41 @@ final class FingerprintTest extends TestCase
         );
     }
 
+    /**
+     * One statement, batches of different size. `IN (?, ?)` was collapsed long ago;
+     * `VALUES` was not, and a batch writer looked like several different queries.
+     */
+    public function testMultiRowValuesAreCollapsed(): void
+    {
+        $one = Fingerprint::of('INSERT INTO tag (name, slug) VALUES (?, ?)');
+        $three = Fingerprint::of('INSERT INTO tag (name, slug) VALUES (?, ?), (?, ?), (?, ?)');
+        $literals = Fingerprint::of("INSERT INTO tag (name, slug) VALUES ('a', 'b'),('c', 'd')");
+
+        self::assertSame('insert into tag (name, slug) values (?, ?)', $one->value());
+        self::assertTrue($one->equals($three));
+        self::assertTrue($one->equals($literals));
+    }
+
+    public function testMultiRowValuesWithAFunctionCallAreCollapsed(): void
+    {
+        self::assertSame(
+            'insert ignore into log (id, at) values (?, now()) on duplicate key update at = now()',
+            Fingerprint::of('INSERT IGNORE INTO log (id, at) VALUES (1, NOW()), (2, NOW()) ON DUPLICATE KEY UPDATE at = NOW()')->value(),
+        );
+    }
+
+    /**
+     * Only a list of tuples is a batch. A single row stays exactly as it was, and so does
+     * its fingerprint — and with it every baseline entry written for it.
+     */
+    public function testASingleRowIsLeftAlone(): void
+    {
+        self::assertSame(
+            'insert into tag (name) values (?)',
+            Fingerprint::of('INSERT INTO tag (name) VALUES (?)')->value(),
+        );
+    }
+
     public function testWhitespaceAndCaseAreNormalised(): void
     {
         self::assertTrue(

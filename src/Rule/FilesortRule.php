@@ -28,12 +28,12 @@ final class FilesortRule extends PlanRule
         return Severity::Warning;
     }
 
-    protected function inspect(PlanNode $node, Plan $plan): ?string
+    protected function inspect(PlanNode $node, Plan $plan, string $table): ?string
     {
         if (!$node->filesort || !$this->isLargeEnough($node, $plan)) {
             return null;
         }
 
-        return sprintf('sorting "%s" without an index', $node->table);
+        return sprintf('sorting %s without an index', $table);
     }
 }

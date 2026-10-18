@@ -38,6 +38,12 @@ final class PlanProvider
 
     private int $failed = 0;
 
+    /** @var array<string, int> plans that read no table, by the reason the platform gave */
+    private array $nothingToJudge = [];
+
+    /** @var array<string, string> the first failure of each kind, so the summary can say why */
+    private array $failureReasons = [];
+
     /** @var array<string, int|null> keyed by connection and table */
     private array $relationSizes = [];
 
@@ -133,6 +139,30 @@ final class PlanProvider
     }
 
     /**
+     * Plans that were read and read no table — not failures, see `Plan::readingNoTable()`.
+     *
+     * @return array<string, int> reason => how many plans gave it
+     */
+    public function nothingToJudge(): array
+    {
+        return $this->nothingToJudge;
+    }
+
+    /**
+     * The first failure of each kind, by kind.
+     *
+     * Only the first: a broken connection fails every query the same way, and a summary
+     * repeating it a thousand times says less than one line. Before this the cause was
+     * swallowed whole, and diagnosing a failed plan meant patching `vendor/`.
+     *
+     * @return array<string, string> kind => the first message of that kind
+     */
+    public function failureReasons(): array
+    {
+        return $this->failureReasons;
+    }
+
+    /**
      * The distinct drivers that actually read a plan during this run.
      *
      * Tier 2's caveats — "this platform cannot say which indexes could have applied" —
@@ -215,9 +245,9 @@ final class PlanProvider
 
         try {
             $rows = $source->explainer->run($source->driver->explainSql($event->sql), $event->params);
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
             // not "quietly green": failures are counted and reach the summary
-            ++$this->failed;
+            $this->fail($e::class, self::firstLine($e->getMessage()));
 
             return null;
         } finally {
@@ -227,15 +257,21 @@ final class PlanProvider
         $raw = self::firstValue($rows);
 
         if (null === $raw) {
-            ++$this->failed;
+            $this->fail('no plan', 'EXPLAIN returned no row with a plan in it');
 
             return null;
         }
 
         $plan = $source->driver->parsePlan($raw);
 
+        if (null !== $plan->nothingToJudge) {
+            $this->nothingToJudge[$plan->nothingToJudge] = ($this->nothingToJudge[$plan->nothingToJudge] ?? 0) + 1;
+
+            return null;
+        }
+
         if ($plan->isEmpty()) {
-            ++$this->failed;
+            $this->fail('unreadable plan', 'the plan was not JSON the driver could read: '.self::firstLine($raw));
 
             return null;
         }
@@ -243,6 +279,19 @@ final class PlanProvider
         ++$this->explained;
 
         return $plan->onConnection($event->connection);
+    }
+
+    private function fail(string $kind, string $reason): void
+    {
+        ++$this->failed;
+        $this->failureReasons[$kind] ??= $reason;
+    }
+
+    private static function firstLine(string $text): string
+    {
+        $line = trim(strtok($text, "\n") ?: '');
+
+        return mb_strlen($line) > 200 ? mb_substr($line, 0, 200).'…' : $line;
     }
 
     /**

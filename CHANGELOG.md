@@ -6,6 +6,55 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Tier 2 counts plans that read no table apart from failures: `tier 2: 154 plans parsed,
+  62 had nothing to judge, 0 failed.`, with the reasons the platform gave. MySQL answers a
+  unique-key lookup that finds no row, `No tables used` or `Impossible WHERE` with no table
+  in the plan; PostgreSQL does the same for `SELECT version()` and `WHERE 1 = 0`. They used
+  to be counted as failed — a quarter of all plans on one MySQL suite.
+- A failed plan says why: the summary names the first failure of each kind (the exception
+  class and the first line of its message, or what was wrong with the plan).
+
+### Changed
+
+- `query-in-loop` counts one Doctrine `flush()` as one unit of work. The unit of work writes
+  every pending change from that single call, and a flush of five entities used to be
+  reported as five queries from one place. A `flush()` inside a loop is still reported, and
+  its message says how many units of work the queries came from. Eloquent is unaffected.
+- `no-possible-index` no longer reports a single-table read that nothing filters. A scan
+  with no `WHERE` — `findAll()` on a lookup table — has nothing for an index to narrow; on
+  one MySQL suite such scans were 825 of 927 findings of this rule. In a join a table
+  without a condition is still judged: MySQL puts the join condition on the other table,
+  and a full scan of the first one is what a missing index on the join column looks like.
+- `no-possible-index` and `table-scan` no longer report a derived table
+  (`JOIN (SELECT ...) x`, Doctrine's paginator `dctrn_result`): it never has an index.
+  The tables inside the subquery are now walked and judged on their own, which they were
+  not before — so a subquery can bring findings of its own.
+- Tier 2 messages name the table behind an alias: `no suitable index on "settings_entry"
+  (t0)` instead of `on "t0"`. Only the text changed; the signature still holds the alias.
+- The fingerprint collapses multi-row `VALUES`: `VALUES (?, ?), (?, ?)` and `VALUES (?, ?)`
+  are one shape, as `IN (?, ?)` and `IN (?)` already were. This changes the signatures of
+  findings on such statements — see [UPGRADING.md](UPGRADING.md#unreleased).
+- Savepoint statements (`SAVEPOINT`, `RELEASE SAVEPOINT`, `ROLLBACK TO SAVEPOINT`) are
+  left out of the trace on Doctrine. They come from the test harness: inside a test
+  transaction that is rolled back afterwards, DBAL nests every `flush()` as a savepoint,
+  while in production the same flush opens a plain transaction whose begin and commit were
+  never recorded. They put a pair of extra "queries" around every flush, and the number in
+  the savepoint name made each nesting level a shape of its own — on one suite a
+  `wrapInTransaction()` line was a `query-in-loop` finding made of nothing else. Query
+  counts in the summary and in `max-queries` drop by those statements.
+- Frames of Symfony's compiled container (`var/cache/<env>/Container<hash>/`) are stepped
+  over in the call chain, as `vendor/symfony/` already was.
+
+### Fixed
+
+- A table entry without a name in MySQL's plan — an outer query settled before it reads
+  anything, holding only a subquery — was reported as a table called `"unknown"`.
+- README: a parallel run (`paratest`, `pest --parallel`, `artisan test --parallel`) prints
+  no worker's summary at all — ParaTest starts every worker with `--no-output`. The README
+  said each worker printed its own; the findings are only in `report-json`.
+
 ## [1.0.0] - 2026-09-13
 
 The public API drawn in 0.3.0 is now stable: nothing in it breaks before 2.0. It is the

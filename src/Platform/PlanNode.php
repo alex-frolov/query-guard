@@ -15,6 +15,19 @@ final readonly class PlanNode
      * @param list<string>|null $possibleIndexes null means the platform does not report
      *                                           which indexes could have applied;
      *                                           an empty list means none could
+     * @param bool              $derived         the rows come from a subquery materialised
+     *                                           on the fly (`JOIN (SELECT ...) x`). Such a
+     *                                           table has no index by definition, so a
+     *                                           full scan of it says nothing about the
+     *                                           schema — the subquery's own tables do
+     * @param bool|null         $hasCondition    whether rows of this table are filtered
+     *                                           at all — by a WHERE or a join condition.
+     *                                           Null when that cannot be told: the driver
+     *                                           does not say, or the table is one of a
+     *                                           join, where the condition may sit on the
+     *                                           other side. Without a condition there is
+     *                                           nothing an index could narrow: `findAll()`
+     *                                           reads every row however it is indexed
      */
     public function __construct(
         public string $table,
@@ -24,6 +37,8 @@ final readonly class PlanNode
         public ?int $estimatedRows = null,
         public bool $filesort = false,
         public bool $temporaryTable = false,
+        public bool $derived = false,
+        public ?bool $hasCondition = null,
     ) {
     }
 

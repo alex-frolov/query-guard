@@ -166,6 +166,14 @@ final class CallsiteResolver
             '#/vendor/laravel/#',
             '#/vendor/illuminate/#',
             '#/vendor/composer/#',
+            // Symfony's compiled container, `var/cache/<env>/Container<hash>/get…Service.php`:
+            // generated code a chain has to pass through without spending a slot on it, as
+            // with Laravel's pipeline closures. It is not under `vendor/symfony/`, so it used
+            // to surface exactly when a project followed the summary's advice and added
+            // `skip-paths` — on one suite 34% of all chain slots, and the whole chain of 180
+            // findings. Compiled Twig templates live in `var/cache/` as well and are left
+            // alone: a template is a place the reader can open
+            '#/var/cache/[^/]+/Container[^/]+/#',
             ...self::$configured,
         ], self::$configuredChainDepth, [
             ...self::functionPatterns(self::DEFAULT_SKIP_FUNCTIONS),

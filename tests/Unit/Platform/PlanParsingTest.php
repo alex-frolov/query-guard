@@ -194,6 +194,143 @@ final class PlanParsingTest extends TestCase
         self::assertSame(['child', 'big'], $tables);
     }
 
+    // --- whether anything filters the rows -----------------------------------
+
+    /**
+     * `SELECT t0.key, t0.data, t0.id FROM settings_entry t0` — no WHERE at all, captured
+     * on a live project. `ALL`, no `possible_keys`, and no `attached_condition`: there is
+     * nothing an index could narrow.
+     */
+    public function testMySqlScanWithoutAConditionIsRecognised(): void
+    {
+        $node = $this->mysql('no-condition')->nodes[0];
+
+        self::assertSame(ScanType::FullTable, $node->scanType);
+        self::assertTrue($node->hasNoPossibleIndex());
+        self::assertFalse($node->hasCondition);
+    }
+
+    public function testMySqlConditionIsSeenOnAScanAndOnALookup(): void
+    {
+        self::assertTrue($this->mysql('no-index')->nodes[0]->hasCondition, 'attached_condition');
+        self::assertTrue($this->mysql('indexed')->nodes[0]->hasCondition, 'ref');
+    }
+
+    /**
+     * `big b JOIN child c ON c.big_id = b.id`, no index on `child.big_id`. MySQL drives
+     * from `c` by a full scan and hangs the join condition on `b`, so `c` carries no
+     * condition — and its scan is the missing index. In a join "no condition" cannot be
+     * told from "the condition sits on the other table".
+     */
+    public function testMySqlTableWithoutAConditionInAJoinIsNotCalledUnfiltered(): void
+    {
+        [$child, $big] = $this->mysql('join-no-index')->nodes;
+
+        self::assertSame('c', $child->table);
+        self::assertTrue($child->hasNoPossibleIndex());
+        self::assertNull($child->hasCondition);
+        self::assertTrue($big->hasCondition);
+    }
+
+    public function testPostgresDoesNotClaimToKnowAboutConditions(): void
+    {
+        self::assertNull($this->postgres('no-index')->nodes[0]->hasCondition);
+    }
+
+    // --- derived tables -----------------------------------------------------
+
+    /**
+     * `FROM package p INNER JOIN (SELECT DISTINCT package_id FROM dependent WHERE
+     * packageName = ?) x ON x.package_id = p.id`, captured on a live project.
+     *
+     * `x` is read with `ALL` and no `possible_keys` — of course: it is a subquery. The
+     * subquery sits inside the `x` table entry, and in it `dependent` is read through
+     * `by_name_package`. `p` is fetched by `PRIMARY`. Before, the walk never entered the
+     * subquery, and `x` was the only verdict the plan produced.
+     */
+    public function testMySqlDerivedTableIsMarkedAndItsSubqueryIsWalked(): void
+    {
+        $nodes = $this->mysql('derived-scan')->nodes;
+
+        self::assertSame(['x', 'dependent', 'p'], array_map(static fn (PlanNode $n): string => $n->table, $nodes));
+
+        self::assertTrue($nodes[0]->derived);
+        self::assertSame(ScanType::FullTable, $nodes[0]->scanType);
+        self::assertTrue($nodes[0]->hasNoPossibleIndex(), 'true of the node, which is why the rules must check derived');
+
+        self::assertFalse($nodes[1]->derived);
+        self::assertSame('by_name_package', $nodes[1]->usedIndex);
+        self::assertFalse($nodes[1]->temporaryTable, 'the materialisation is not a GROUP BY temporary table');
+
+        self::assertFalse($nodes[2]->derived);
+        self::assertSame('PRIMARY', $nodes[2]->usedIndex);
+    }
+
+    /**
+     * When the outer query is settled before it reads anything, MySQL leaves a table entry
+     * with no `table_name`, holding only the subquery. It used to surface as a table
+     * called "unknown" and got an `error` from `no-possible-index`.
+     */
+    public function testMySqlTableEntryWithoutANameIsNotATable(): void
+    {
+        $nodes = $this->mysql('derived-unnamed')->nodes;
+
+        self::assertSame(['dependent'], array_map(static fn (PlanNode $n): string => $n->table, $nodes));
+        self::assertSame(ScanType::Lookup, $nodes[0]->scanType);
+    }
+
+    // --- plans that read no table -------------------------------------------
+
+    /**
+     * Captured on live projects rather than on the stand. MySQL settles these before
+     * reading a table and says why in `query_block.message`; there are no nodes at all.
+     * Each one is a valid answer with nothing to judge, not a failure: a unique-key lookup
+     * that found no row, `SELECT GET_LOCK(?, ?)`, a WHERE the optimiser proved false.
+     */
+    public function testMySqlPlanWithOnlyAMessageHasNothingToJudge(): void
+    {
+        foreach ([
+            'no-matching-row' => 'no matching row in const table',
+            'no-tables-used' => 'No tables used',
+            'impossible-where' => 'Impossible WHERE',
+        ] as $fixture => $message) {
+            $plan = $this->mysql($fixture);
+
+            self::assertTrue($plan->isEmpty(), $fixture);
+            self::assertSame($message, $plan->nothingToJudge, $fixture);
+        }
+    }
+
+    /**
+     * `COUNT(DISTINCT p0_.id) ... WHERE 1 = 0`: `Aggregate` over `Sort` over a `Result`
+     * with `One-Time Filter: false`. Three nodes, none of them a relation.
+     */
+    public function testPostgresFalseOneTimeFilterHasNothingToJudge(): void
+    {
+        $plan = $this->postgres('one-time-filter-false');
+
+        self::assertTrue($plan->isEmpty());
+        self::assertSame('One-Time Filter: false', $plan->nothingToJudge);
+    }
+
+    public function testPostgresPlanWithoutARelationHasNothingToJudge(): void
+    {
+        $plan = $this->postgres('no-relation');
+
+        self::assertTrue($plan->isEmpty());
+        self::assertSame('no relation in the plan', $plan->nothingToJudge);
+    }
+
+    /**
+     * The other half of the distinction: a plan nobody could read must stay a failure.
+     */
+    public function testUnreadablePlanIsNotMistakenForNothingToJudge(): void
+    {
+        self::assertNull((new MySqlPlatformDriver())->parsePlan('{"query_block": {"select_id": 1}}')->nothingToJudge);
+        self::assertNull((new MySqlPlatformDriver())->parsePlan('not json')->nothingToJudge);
+        self::assertNull((new PostgresPlatformDriver())->parsePlan('[]')->nothingToJudge);
+    }
+
     // --- shared -------------------------------------------------------------
 
     public function testGarbageInsteadOfPlanGivesAnEmptyPlanNotAnError(): void

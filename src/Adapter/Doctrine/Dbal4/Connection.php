@@ -22,6 +22,13 @@ final class Connection extends BaseConnection
         );
     }
 
+    public function beginTransaction(): void
+    {
+        $this->recorder->transactionStarted();
+
+        parent::beginTransaction();
+    }
+
     protected function wrapStatement(DriverStatement $statement, string $sql): DriverStatement
     {
         return new Statement($statement, $this->recorder, $sql, $this->connectionName);

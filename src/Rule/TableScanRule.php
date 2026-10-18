@@ -36,9 +36,11 @@ final class TableScanRule extends PlanRule
         return Severity::Error;
     }
 
-    protected function inspect(PlanNode $node, Plan $plan): ?string
+    protected function inspect(PlanNode $node, Plan $plan, string $table): ?string
     {
-        if (!$node->scanType->readsWholeRelation() || true === $node->hasNoPossibleIndex()) {
+        // reading a materialised subquery end to end is how a derived table is read;
+        // what the subquery cost is in the nodes of its own tables
+        if ($node->derived || !$node->scanType->readsWholeRelation() || true === $node->hasNoPossibleIndex()) {
             return null;
         }
 
@@ -50,16 +52,16 @@ final class TableScanRule extends PlanRule
 
         if (ScanType::FullIndex === $node->scanType) {
             return sprintf(
-                'full scan of the "%s" index on "%s" (~%s rows) — nothing narrowed it',
+                'full scan of the "%s" index on %s (~%s rows) — nothing narrowed it',
                 $node->usedIndex ?? '?',
-                $node->table,
+                $table,
                 $rows,
             );
         }
 
         return sprintf(
-            'full scan of "%s" (~%s rows) although indexes exist',
-            $node->table,
+            'full scan of %s (~%s rows) although indexes exist',
+            $table,
             $rows,
         );
     }

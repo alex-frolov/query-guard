@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace QueryGuard\Rule;
 
+use QueryGuard\Adapter\Doctrine\DoctrineEnricher;
 use QueryGuard\Finding\Finding;
 use QueryGuard\Finding\Severity;
 use QueryGuard\Query\CallsiteResolver;
@@ -30,6 +31,18 @@ use QueryGuard\Query\Trace;
  * Distinguishing the two would need to know where one unit of work ends, which a trace
  * does not carry. Adjacency is not it either — the same suite's media scanner is a real
  * loop whose queries are just as tightly packed.
+ *
+ * **One exception, where the unit of work is known: a Doctrine `flush()`.** The unit of
+ * work writes every pending change from that single call, so a flush of five entities
+ * used to be "5 queries of 3 different shapes from one place" — on one Doctrine suite,
+ * 418 of 561 findings of this rule pointed at a `flush()` line. The adapter marks which
+ * commit wrote each query, and the rule counts a commit as one unit. A `flush()` called
+ * from inside a `foreach` is still many units, and still reported.
+ *
+ * Filtering writes out instead was considered and rejected: on Eloquent half of this
+ * rule's findings are writes, and they are real loops — `updateOrCreate()` per element.
+ * What made Doctrine different was never the kind of statement, only that one line
+ * issues them all.
  *
  * @internal
  */
@@ -64,7 +77,9 @@ final class QueryInLoopRule implements Rule
         }
 
         foreach ($groups as $group) {
-            if (\count($group) < $this->threshold) {
+            $units = self::units($group);
+
+            if ($units < $this->threshold) {
                 continue;
             }
 
@@ -85,11 +100,14 @@ final class QueryInLoopRule implements Rule
             yield new Finding(
                 rule: $this->id(),
                 test: $trace->test,
-                message: sprintf(
-                    '%d queries of %d different shapes from one place',
-                    \count($group),
-                    \count($fingerprints),
-                ),
+                message: $units === \count($group)
+                    ? sprintf('%d queries of %d different shapes from one place', \count($group), \count($fingerprints))
+                    : sprintf(
+                        '%d queries of %d different shapes from one place, in %d units of work (a Doctrine flush counts as one)',
+                        \count($group),
+                        \count($fingerprints),
+                        $units,
+                    ),
                 severity: Severity::Warning,
                 callsite: $callsite,
                 count: \count($group),
@@ -97,5 +115,29 @@ final class QueryInLoopRule implements Rule
                 signature: Finding::signature($this->id(), $callsite, 'mixed'),
             );
         }
+    }
+
+    /**
+     * How many units of work the group is: every query on its own, except that all
+     * queries of one Doctrine commit count once.
+     *
+     * @param list<QueryEvent> $group
+     */
+    private static function units(array $group): int
+    {
+        $commits = [];
+        $units = 0;
+
+        foreach ($group as $event) {
+            $commit = $event->annotation(DoctrineEnricher::COMMIT);
+
+            if (null === $commit) {
+                ++$units;
+            } elseif (\is_scalar($commit)) {
+                $commits[$event->connection.'|'.$commit] = true;
+            }
+        }
+
+        return $units + \count($commits);
     }
 }

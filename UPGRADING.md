@@ -83,6 +83,35 @@ part of the signature, so a finding already in the baseline stays silenced; what
 what was never baselined. Before such an upgrade, run once with `mode="report"` and look at
 the `[error]` lines, or regenerate the baseline if they are all known.
 
+## Unreleased
+
+Nothing in the public API changed. Two things from "What a minor release may still change"
+did, and both can show up in a baseline.
+
+### Signatures of multi-row INSERTs
+
+The fingerprint now collapses `VALUES (?, ?), (?, ?)` to `VALUES (?, ?)`. A finding on a
+statement that writes several rows at once gets a different signature, so a baseline entry
+written for it stops matching: the finding arrives as new, and the old entry reports that it
+silenced nothing. Regenerate as described above and check that the diff moves entries rather
+than adds them. Statements that write one row keep their signature.
+
+### Fewer findings from `query-in-loop` and `no-possible-index`, and some new ones
+
+`query-in-loop` counts one Doctrine `flush()` as one unit of work, and `no-possible-index`
+skips derived tables and single-table scans that nothing filters. The baseline entries those rules wrote
+for such places now silence nothing, and the summary counts them; they can be dropped by
+regenerating. Nothing that was reported before becomes harder to silence.
+
+On Doctrine under a rolled-back test transaction (`dama/doctrine-test-bundle`), savepoint
+statements no longer count as queries. A `max-queries` budget or `#[AllowQueries]` set
+close to the old count now has room to spare; nothing that passed before fails.
+
+The other direction is possible too: tier 2 now walks the tables inside a subquery
+(`JOIN (SELECT ...) x`) on MySQL, where it used to see only the outer query. A table in a
+subquery with no index on its condition is a new finding. With `fail-on="error"` and tier 2
+on, run once with `mode="report"` before upgrading.
+
 ## 1.0.0
 
 Coming from 0.3, the API is the same: Roave BC Check reports no break between 0.3.0 and

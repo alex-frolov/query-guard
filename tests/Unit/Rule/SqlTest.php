@@ -119,6 +119,30 @@ final class SqlTest extends TestCase
         self::assertFalse(Sql::isSelectStar('SELECT id, name FROM users'));
     }
 
+    /**
+     * MySQL's plan names a table by its alias, and Doctrine aliases everything.
+     */
+    public function testAnAliasIsResolvedToItsTable(): void
+    {
+        self::assertSame('settings_entry', Sql::tableForAlias('SELECT t0.`key` AS key_1 FROM settings_entry t0', 't0'));
+        self::assertSame('parts', Sql::tableForAlias('SELECT p0_.id FROM "parts" p0_ LEFT JOIN footprints f1_ ON f1_.id = p0_.id_footprint', 'p0_'));
+        self::assertSame('footprints', Sql::tableForAlias('SELECT p0_.id FROM "parts" p0_ LEFT JOIN footprints f1_ ON f1_.id = p0_.id_footprint', 'f1_'));
+        self::assertSame('orders', Sql::tableForAlias('SELECT o.id FROM shop.orders AS o', 'o'));
+        self::assertSame('users', Sql::tableForAlias('SELECT u.id FROM `users` `u`', 'u'));
+    }
+
+    /**
+     * Not an alias: the table itself, a derived table, a name that does not appear. The
+     * caller then shows the name as the plan gave it.
+     */
+    public function testANameThatIsNotAnAliasGivesNull(): void
+    {
+        self::assertNull(Sql::tableForAlias('SELECT id FROM big WHERE plain_col = ?', 'big'));
+        self::assertNull(Sql::tableForAlias('SELECT p.id FROM package p INNER JOIN (SELECT package_id FROM dependent) x ON x.package_id = p.id', 'x'));
+        self::assertNull(Sql::tableForAlias('SELECT id FROM orders o', 't0'));
+        self::assertNull(Sql::tableForAlias("SELECT id FROM orders o WHERE note = 'FROM secret t0'", 't0'), 'not inside a literal');
+    }
+
     public function testShortenCollapsesWhitespaceAndTruncates(): void
     {
         self::assertSame('SELECT a FROM b', Sql::shorten("SELECT   a\n  FROM b "));

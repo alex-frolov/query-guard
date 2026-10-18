@@ -104,12 +104,43 @@ final class Tier2Factory
             }
         }
 
-        $notices[] = sprintf(
-            'tier 2: %d plans parsed, %d failed.',
-            $this->provider->explained(),
-            $this->provider->failed(),
-        );
+        $nothingToJudge = $this->provider->nothingToJudge();
+
+        $notices[] = [] === $nothingToJudge
+            ? sprintf('tier 2: %d plans parsed, %d failed.', $this->provider->explained(), $this->provider->failed())
+            : sprintf(
+                "tier 2: %d plans parsed, %d had nothing to judge, %d failed.\n"
+                .'Nothing to judge: the optimiser answered without reading a table — %s.',
+                $this->provider->explained(),
+                array_sum($nothingToJudge),
+                $this->provider->failed(),
+                self::countedList($nothingToJudge),
+            );
+
+        if ([] !== $this->provider->failureReasons()) {
+            $lines = [];
+
+            foreach ($this->provider->failureReasons() as $kind => $reason) {
+                $lines[] = sprintf('  %s: %s', $kind, $reason);
+            }
+
+            $notices[] = "tier 2: the first failure of each kind —\n".implode("\n", $lines);
+        }
 
         return $notices;
+    }
+
+    /**
+     * @param array<string, int> $counts
+     */
+    private static function countedList(array $counts): string
+    {
+        arsort($counts);
+
+        return implode(', ', array_map(
+            static fn (string $reason, int $count): string => sprintf('"%s" (%d)', $reason, $count),
+            array_keys($counts),
+            $counts,
+        ));
     }
 }

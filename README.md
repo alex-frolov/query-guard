@@ -103,8 +103,9 @@ Then wire the adapter for your ORM — one line for Doctrine, nothing at all for
 
 **Under Pest it is the same two steps.** Pest runs on PHPUnit, the `<extensions>` node in
 `phpunit.xml` is read as usual, and the summary is printed after Collision's. There is
-one thing worth knowing: `pest --parallel` is ParaTest, so give `report-json` a `%token%`
-— see "When query-guard stays silent".
+one thing worth knowing: `pest --parallel` is ParaTest, which prints no worker's summary,
+so give `report-json` a `%token%` and read the files — see "When query-guard stays
+silent".
 
 ### Doctrine
 
@@ -202,8 +203,8 @@ when the table is empty.
 ## When query-guard stays silent
 
 A tool that shows green when it did not look is worse than no tool. Everything on this
-list is printed as a notice in the summary — except the last three, which are silent by
-design:
+list is printed as a notice in the summary — except the rows in bold, which are silent
+by design:
 
 | Situation | What you see |
 |---|---|
@@ -217,6 +218,7 @@ design:
 | `no-possible-index` on PostgreSQL | the rule says it cannot judge — not that all is well |
 | `temporary-table` on PostgreSQL | same |
 | **`--no-output` with no `report-json` and no baseline to write** | nothing: there is nowhere to say anything, so the extension does not load |
+| **A parallel run: `paratest`, `pest --parallel`, `artisan test --parallel`** | no summary on the console, ever: ParaTest starts every worker with `--no-output`. With `report-json` each worker writes its file; without it the extension does not load in the workers at all |
 | **A table below `min-rows`** | nothing: plan rules deliberately do not judge small tables |
 | Eloquent listener that reached one connection | the summary says which, and how to cover the rest |
 | Two Doctrine connections sharing a database name | both are kept; the second is renamed and the rename is announced |
@@ -243,28 +245,21 @@ A few more worth knowing:
   deploy.** An application that swaps an implementation under test — a cache replaced by a
   no-op, a queue driver set to `sync`, a service faked in a provider guarded by
   `runningUnitTests()` — is traced honestly, and the finding is a true statement about a
-  program nobody ships. This is a step beyond "coverage equals your tests' coverage": here
-  the coverage is there and the trace is real, it is the subject that differs. Seen on a
-  music streamer whose scanner memoises artist lookups in production and deliberately does
-  not under test, which turned an N+1 that cannot happen in production into the largest
-  cluster in the report. Worth one question when a finding looks too easy: is this class
-  the one that runs in production?
-- **The trace describes the program your tests run, which is not always the program you
-  deploy.** An application that swaps an implementation under test — a cache replaced by a
-  no-op, a queue driver set to `sync`, a service faked in a provider guarded by
-  `runningUnitTests()` — is traced honestly, and the finding is a true statement about a
   program nobody ships. This is a step beyond "the tool sees as much as the tests cover":
   here the coverage is there and the trace is real, it is the subject that differs. Seen
   on a music streamer whose scanner memoises artist lookups in production and deliberately
   does not under test, which turned an N+1 that cannot happen in production into the
   largest cluster in the report. Worth one question when a finding looks too easy: is this
   class the one that runs in production?
-- **Under a parallel runner every worker is its own run.** ParaTest starts a process per
-  worker, and query-guard has no way to see across them: each prints its own summary,
-  keeps its own counters, and in `strict` mode fails its own process. Findings are still
-  correct — a trace never spans workers — but "findings: 3" printed four times is four
-  partial reports, not twelve findings. Put `%token%` in the `report-json` path so every
-  worker writes its own file, or run query-guard in a sequential job of its own.
+- **Under a parallel runner every worker is its own run, and none of them prints.**
+  ParaTest — which is also what `pest --parallel` and `artisan test --parallel` run —
+  starts a process per worker and passes each one `--no-output`, so no worker's summary
+  ever reaches the console, and the parent process runs no tests to summarise. Each
+  worker keeps its own counters and query-guard has no way to see across them. Findings
+  are still correct — a trace never spans workers — but the only place they land is
+  `report-json`: put `%token%` in its path so every worker writes its own file, and read
+  those files, or run query-guard in a sequential job of its own. Without `report-json`
+  the extension does not load in the workers, and `strict` fails nothing.
   Regenerating a *baseline* under a parallel runner is refused outright and said so in
   the summary: a baseline is one committed file, twelve workers writing it would leave
   whichever share finished last, and the run after that would fail on findings nobody
@@ -711,10 +706,11 @@ points at the first frame in your own code. When this is not the odd finding but
 of the run — a project whose repositories all extend one from a wrapper package, say —
 the summary says so and names the packages, ready to paste in.
 
-**6. Are you running under a parallel runner?** Each ParaTest worker prints its own
-summary; "findings: 3" from four workers is four partial reports, not twelve findings —
-see "When query-guard stays silent" above. Give the `report-json` path a `%token%` so the
-workers stop overwriting each other's file; the summary says so too when they do.
+**6. Are you running under a parallel runner?** ParaTest workers print no summary at
+all, so the console says nothing either way — see "When query-guard stays silent" above.
+The findings are in `report-json`, one file per worker once the path has a `%token%`;
+without the token the workers overwrite each other's file, and every worker's report
+says so in its notices.
 
 **7. Is the class in the trace the one that runs in production?** Applications routinely
 swap implementations under test, and a service provider branching on
@@ -1024,7 +1020,24 @@ mostly a way to check that it happened.
 
 `0 failed` next to a plausible number of plans is what a working tier 2 looks like. A
 large `failed` count usually means EXPLAIN is being refused rather than misparsed —
-permissions, or a statement the platform will not explain.
+permissions, or a statement the platform will not explain. The summary names the first
+failure of each kind, so the cause is in the output rather than behind a debugger:
+
+```
+  ! tier 2: the first failure of each kind —
+      Doctrine\DBAL\Exception\SyntaxErrorException: An exception occurred while executing a query: …
+```
+
+Some plans are neither parsed nor failed. A lookup by a unique key that finds no row,
+`SELECT GET_LOCK(?)`, a `WHERE` the optimiser proves false — the database answers these
+without reading a table, so a plan rule has nothing to look at. They get their own count
+and the reason the platform gave:
+
+```
+  ! tier 2: 154 plans parsed, 62 had nothing to judge, 0 failed.
+    Nothing to judge: the optimiser answered without reading a table — "no matching row in
+    const table" (57), "No tables used" (3), "No matching min/max row" (2).
+```
 
 **Connections are named after their database.** Two entries pointing at the same `dbname`
 — a primary and a read replica, most often — are told apart by host, port and user, and

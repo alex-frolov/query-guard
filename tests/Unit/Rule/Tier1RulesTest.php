@@ -6,6 +6,7 @@ namespace QueryGuard\Test\Unit\Rule;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
+use QueryGuard\Adapter\Doctrine\DoctrineEnricher;
 use QueryGuard\Finding\Finding;
 use QueryGuard\Finding\Severity;
 use QueryGuard\Query\CallsiteResolver;
@@ -76,6 +77,28 @@ final class Tier1RulesTest extends TestCase
 
         self::assertCount(1, $findings);
         self::assertStringContainsString('5 queries of 5 different shapes', $findings[0]->message);
+    }
+
+    /**
+     * Statements of one Doctrine commit count as one unit: two flushes of five statements
+     * each are two units, under the threshold of five.
+     */
+    public function testQueryInLoopCountsACommitOnce(): void
+    {
+        $trace = $this->trace();
+
+        foreach ([1, 2] as $commit) {
+            foreach (['orders', 'users', 'invoices', 'projects', 'tags'] as $table) {
+                $trace->record(new QueryEvent(
+                    sql: "INSERT INTO {$table} (id) VALUES (?)",
+                    params: [1],
+                    stack: [['file' => '/project/src/Flush.php', 'line' => 7, 'function' => 'flush']],
+                    annotations: [DoctrineEnricher::COMMIT => $commit],
+                ));
+            }
+        }
+
+        self::assertSame([], $this->findingsFor(new QueryInLoopRule($this->resolver()), $trace));
     }
 
     /**

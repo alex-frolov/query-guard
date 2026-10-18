@@ -80,6 +80,16 @@ final class PostgresPlatformDriver implements PlatformDriver
         $nodes = [];
         $this->walk($root, $nodes, false);
 
+        if ([] === $nodes) {
+            // a valid plan that reads no relation: `SELECT version()`, or `WHERE 1 = 0`,
+            // which the planner turns into a `Result` with `One-Time Filter: false` —
+            // possibly under a `Limit`, `Sort` or `Aggregate` that sorts nothing
+            return Plan::readingNoTable(
+                $this->name(),
+                self::hasFalseOneTimeFilter($root) ? 'One-Time Filter: false' : 'no relation in the plan',
+            );
+        }
+
         return new Plan($this->name(), $nodes);
     }
 
@@ -113,6 +123,24 @@ final class PostgresPlatformDriver implements PlatformDriver
         foreach (Json::objects($node, 'Plans') as $child) {
             $this->walk($child, $nodes, $sorting);
         }
+    }
+
+    /**
+     * @param array<array-key, mixed> $node
+     */
+    private static function hasFalseOneTimeFilter(array $node): bool
+    {
+        if ('false' === Json::string($node, 'One-Time Filter')) {
+            return true;
+        }
+
+        foreach (Json::objects($node, 'Plans') as $child) {
+            if (self::hasFalseOneTimeFilter($child)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

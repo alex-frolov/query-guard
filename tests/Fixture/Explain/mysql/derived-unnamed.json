@@ -1,0 +1,60 @@
+{
+  "query_block": {
+    "select_id": 1,
+    "message": "no matching row in const table",
+    "table": {
+      "materialized_from_subquery": {
+        "using_temporary_table": true,
+        "dependent": false,
+        "cacheable": true,
+        "query_block": {
+          "select_id": 2,
+          "cost_info": {
+            "query_cost": "0.35"
+          },
+          "ordering_operation": {
+            "using_filesort": false,
+            "duplicates_removal": {
+              "using_temporary_table": true,
+              "using_filesort": true,
+              "table": {
+                "table_name": "dependent",
+                "access_type": "ref",
+                "possible_keys": [
+                  "PRIMARY",
+                  "IDX_BB9077A4F44CABFF",
+                  "by_name_package",
+                  "by_type"
+                ],
+                "key": "by_type",
+                "used_key_parts": [
+                  "packageName"
+                ],
+                "key_length": "766",
+                "ref": [
+                  "const"
+                ],
+                "rows_examined_per_scan": 1,
+                "rows_produced_per_join": 0,
+                "filtered": "5.00",
+                "using_index": true,
+                "cost_info": {
+                  "read_cost": "0.25",
+                  "eval_cost": "0.01",
+                  "prefix_cost": "0.35",
+                  "data_read_per_join": "38"
+                },
+                "used_columns": [
+                  "packageName",
+                  "type",
+                  "package_id"
+                ],
+                "attached_condition": "(`app_test`.`dependent`.`package_id` > 241)"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

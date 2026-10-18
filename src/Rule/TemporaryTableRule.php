@@ -29,7 +29,7 @@ final class TemporaryTableRule extends PlanRule
         return Severity::Warning;
     }
 
-    protected function inspect(PlanNode $node, Plan $plan): ?string
+    protected function inspect(PlanNode $node, Plan $plan, string $table): ?string
     {
         if (true !== $this->plans->driverFor($plan)?->reportsTemporaryTable()) {
             return null;
@@ -39,6 +39,6 @@ final class TemporaryTableRule extends PlanRule
             return null;
         }
 
-        return sprintf('temporary table while processing "%s"', $node->table);
+        return sprintf('temporary table while processing %s', $table);
     }
 }

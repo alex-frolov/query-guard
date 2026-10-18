@@ -82,6 +82,32 @@ final class CallsiteResolverTest extends TestCase
         self::assertSame([], $callsite->chain);
     }
 
+    /**
+     * Symfony's compiled container is generated code under `var/cache/`, not under
+     * `vendor/symfony/`. A service built on first use sits behind several `get…Service`
+     * frames, and they took every slot of the chain — the controller that asked for the
+     * service never appeared.
+     */
+    public function testTheCompiledContainerIsNotOfferedAsACaller(): void
+    {
+        $callsite = CallsiteResolver::default()->resolve([
+            ['file' => '/project/src/Services/AI/AIPlatformRegistry.php', 'line' => 52, 'class' => 'Settings\SettingsManager', 'function' => 'get'],
+            ['file' => '/project/var/cache/test/ContainerAbc1xYz/getAIPlatformRegistryService.php', 'line' => 23, 'class' => 'App\Services\AI\AIPlatformRegistry', 'function' => '__construct'],
+            ['file' => '/project/var/cache/test/ContainerAbc1xYz/getInfoProviderRegistryService.php', 'line' => 31, 'class' => 'ContainerAbc1xYz\getAIPlatformRegistryService', 'function' => 'do'],
+            ['file' => '/project/var/cache/test/ContainerAbc1xYz/App_KernelTestDebugContainer.php', 'line' => 912, 'class' => 'ContainerAbc1xYz\getInfoProviderRegistryService', 'function' => 'do'],
+            ['file' => '/project/src/Controller/PartController.php', 'line' => 88, 'class' => 'App\Controller\PartController', 'function' => 'show'],
+            ['file' => '/project/var/cache/test/twig/fb/fb12.php', 'line' => 40, 'class' => 'Twig\Template', 'function' => 'render'],
+        ]);
+
+        self::assertNotNull($callsite);
+        self::assertSame('/project/src/Services/AI/AIPlatformRegistry.php', $callsite->file);
+        self::assertSame([
+            '/project/src/Controller/PartController.php:88 App\Controller\PartController::show',
+            // a compiled template names a template, which the reader can open — it stays
+            '/project/var/cache/test/twig/fb/fb12.php:40 Twig\Template::render',
+        ], $callsite->chain);
+    }
+
     public function testTheChainStopsAtTheConfiguredDepth(): void
     {
         $callsite = (new CallsiteResolver(['#/vendor/#'], 1))->resolve($this->stack());

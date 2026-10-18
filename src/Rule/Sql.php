@@ -117,6 +117,46 @@ final class Sql
     }
 
     /**
+     * The table an alias stands for: `t0` in `FROM settings_entry t0`, `p0_` in
+     * `JOIN parts p0_`, with or without `AS`.
+     *
+     * MySQL's JSON plan names a table by its alias, and Doctrine aliases everything — so
+     * a tier 2 finding said `no suitable index on "t0"`, which tells the reader nothing
+     * without the SQL. Null when the name is not an alias in this query: a bare table
+     * name, or a derived table (`JOIN (SELECT ...) x`), which has no table behind it.
+     * The qualifier is dropped — `shop.orders o` gives `orders`, the name a developer
+     * looks for in the schema.
+     */
+    public static function tableForAlias(string $sql, string $alias): ?string
+    {
+        $pattern = '/\b(?:FROM|JOIN)\s+((?:'.self::IDENTIFIER.'\s*\.\s*)*'.self::IDENTIFIER.')\s+(?:AS\s+)?('.self::IDENTIFIER.')(?![\w$.])/i';
+
+        if (false === preg_match_all($pattern, self::stripped($sql), $matches, \PREG_SET_ORDER)) {
+            return null;
+        }
+
+        foreach ($matches as [, $table, $candidate]) {
+            if (0 !== strcasecmp(self::unquoted($candidate), $alias)) {
+                continue;
+            }
+
+            $parts = self::identifierParts($table);
+            $name = end($parts);
+
+            return false === $name || 0 === strcasecmp($name, $alias) ? null : $name;
+        }
+
+        return null;
+    }
+
+    private static function unquoted(string $identifier): string
+    {
+        $parts = self::identifierParts($identifier);
+
+        return $parts[0] ?? $identifier;
+    }
+
+    /**
      * The parts of a configured name: `public.orders` is two, `"my.table"` is one — a
      * dot inside quotes belongs to the name rather than separating two of them.
      *
@@ -125,7 +165,7 @@ final class Sql
     private static function identifierParts(string $name): array
     {
         // a branch reset group, so every spelling captures into the same slot
-        preg_match_all('/(?|"([^"]*)"|`([^`]*)`|\[([^\]]*)\]|([^\s.]+))/', $name, $matches);
+        preg_match_all('/(?|"([^"]*)"|`([^`]*)`|\[([^]]*)]|([^\s.]+))/', $name, $matches);
 
         return array_values(array_filter($matches[1], static fn (string $part): bool => '' !== $part));
     }

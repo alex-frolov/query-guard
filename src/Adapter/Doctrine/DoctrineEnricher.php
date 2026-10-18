@@ -44,6 +44,13 @@ final class DoctrineEnricher implements QueryEnricher
 
     public const ASSOCIATION = 'doctrine.association';
 
+    /**
+     * Which `UnitOfWork::commit()` wrote the query — an opaque number, equal for every
+     * statement of one flush. Set by `Recorder`, not here: telling one commit from the
+     * next takes the transaction boundary, which a stack does not show.
+     */
+    public const COMMIT = 'doctrine.commit';
+
     public const KIND_COLLECTION = 'collection';
 
     public const KIND_ENTITY = 'entity';
