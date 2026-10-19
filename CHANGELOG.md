@@ -15,6 +15,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   to be counted as failed — a quarter of all plans on one MySQL suite.
 - A failed plan says why: the summary names the first failure of each kind (the exception
   class and the first line of its message, or what was wrong with the plan).
+- A notice when DBAL 3 nests a test's flushes without savepoints (its default; Symfony's
+  `doctrine.dbal.use_savepoints` turns them on). Such a flush starts nothing the driver
+  sees, so `query-in-loop` cannot tell it from the flush before it and a `flush()` in a
+  loop under a test transaction goes unreported. The summary now names the connection and
+  the setting. DBAL 4 always uses savepoints and is unaffected.
 
 ### Changed
 

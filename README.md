@@ -222,6 +222,7 @@ by design:
 | **A table below `min-rows`** | nothing: plan rules deliberately do not judge small tables |
 | Eloquent listener that reached one connection | the summary says which, and how to cover the rest |
 | Two Doctrine connections sharing a database name | both are kept; the second is renamed and the rename is announced |
+| DBAL 3 nesting a test's flushes without savepoints | the connection is named: `query-in-loop` cannot tell those flushes apart and misses a `flush()` in a loop; the fix is `doctrine.dbal.use_savepoints: true` |
 | Baseline entries that silenced nothing | counted, with what that means after a filtered run |
 | A third or more of the findings pointing inside `vendor/` | the share, the packages behind it, and `skip-paths` named |
 | A third or more of the findings pointing at fixture directories | the share, the directories behind it, and `fixture-paths` named |

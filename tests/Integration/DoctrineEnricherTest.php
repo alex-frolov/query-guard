@@ -10,6 +10,7 @@ use Doctrine\ORM\ORMSetup;
 use Doctrine\ORM\Tools\SchemaTool;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
+use QueryGuard\Adapter\Doctrine\Dbal;
 use QueryGuard\Adapter\Doctrine\DoctrineAdapter;
 use QueryGuard\Adapter\Doctrine\DoctrineEnricher;
 use QueryGuard\Adapter\Doctrine\Middleware;
@@ -232,6 +233,12 @@ final class DoctrineEnricherTest extends TestCase
      */
     public function testSavepointsOfANestedTransactionAreLeftOutOfTheTrace(): void
     {
+        // DBAL 4 always nests with savepoints; DBAL 3 does so only when asked, which is
+        // what `doctrine.dbal.use_savepoints: true` does in a Symfony project
+        if (!Dbal::isVersion4()) {
+            $this->em->getConnection()->setNestTransactionsWithSavepoints(true);
+        }
+
         $this->em->getConnection()->beginTransaction();
         $trace = $this->openTrace();
 
@@ -254,6 +261,51 @@ final class DoctrineEnricherTest extends TestCase
 
         self::assertCount(12, $trace->events());
         self::assertSame('12 queries of 2 different shapes from one place, in 6 units of work (a Doctrine flush counts as one)', $findings[0]->message);
+    }
+
+    /**
+     * Without savepoints a nested flush starts nothing the driver sees, so it cannot be
+     * told from the flush before it. The loop then goes unreported — and the summary says so.
+     */
+    public function testFlushesNestedWithoutSavepointsAreAnnounced(): void
+    {
+        if (Dbal::isVersion4()) {
+            self::markTestSkipped('DBAL 4 always nests with savepoints');
+        }
+
+        // DBAL 3's default — setting it explicitly is itself deprecated
+        self::assertFalse($this->em->getConnection()->getNestTransactionsWithSavepoints());
+
+        $this->flushInALoopInsideATransaction();
+
+        self::assertStringContainsString(
+            'nests transactions without savepoints',
+            implode("\n", (new DoctrineAdapter())->notices()),
+        );
+    }
+
+    public function testFlushesNestedWithSavepointsAreNotAnnounced(): void
+    {
+        if (!Dbal::isVersion4()) {
+            $this->em->getConnection()->setNestTransactionsWithSavepoints(true);
+        }
+
+        $this->flushInALoopInsideATransaction();
+
+        self::assertSame([], (new DoctrineAdapter())->notices());
+    }
+
+    private function flushInALoopInsideATransaction(): void
+    {
+        $this->em->getConnection()->beginTransaction();
+        $this->openTrace();
+
+        for ($i = 1; $i <= 3; ++$i) {
+            $this->em->persist(new Customer('customer '.$i));
+            $this->em->flush();
+        }
+
+        $this->em->getConnection()->rollBack();
     }
 
     public function testAReadIsNotPartOfACommit(): void

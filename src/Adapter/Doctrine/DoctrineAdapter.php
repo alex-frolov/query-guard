@@ -52,6 +52,13 @@ final class DoctrineAdapter implements OrmAdapter
      */
     private static array $collisions = [];
 
+    /**
+     * Connections on which flushes were nested without savepoints. See `flushesMerged()`.
+     *
+     * @var array<string, true>
+     */
+    private static array $mergedFlushes = [];
+
     public static function supports(): bool
     {
         return interface_exists(MiddlewareInterface::class);
@@ -76,6 +83,8 @@ final class DoctrineAdapter implements OrmAdapter
      * becomes `shop#2`, and the fact that this happened reaches the summary. Reconnecting
      * the same endpoint keeps the name it already had — DBAL reconnects, and a run must
      * not accumulate a new connection per reconnect.
+     *
+     * @phpstan-impure it writes the registry, so two calls with the same arguments are two facts
      */
     public static function register(string $label, string $endpoint, string $platform = 'unknown', ?object $connection = null): string
     {
@@ -101,8 +110,24 @@ final class DoctrineAdapter implements OrmAdapter
         return $name;
     }
 
+    /**
+     * Records that a flush on this connection ran nested without a savepoint.
+     *
+     * Such a flush starts nothing the driver can see, so `query-in-loop` counts it into the
+     * unit of work before it: a `flush()` in a loop under a test transaction becomes one
+     * unit and goes unreported. Nothing wrong is reported — something is missed, and the
+     * summary is the only place that can say so.
+     *
+     * @phpstan-impure
+     */
+    public static function flushesMerged(string $connection): void
+    {
+        self::$mergedFlushes[$connection] = true;
+    }
+
     public static function reset(): void
     {
+        self::$mergedFlushes = [];
         self::$connections = [];
         self::$names = [];
         self::$collisions = [];
@@ -151,6 +176,15 @@ final class DoctrineAdapter implements OrmAdapter
                 "two connections answer to the database name \"%s\", so the second one is reported as \"%s\".\n"
                 .'They are separate databases — different host, port or user — and each is explained against itself.',
                 $label,
+                $name,
+            );
+        }
+
+        foreach (array_keys(self::$mergedFlushes) as $name) {
+            $notices[] = sprintf(
+                "connection \"%s\" nests transactions without savepoints, so flushes inside one test transaction cannot be told apart:\n"
+                .'query-in-loop counts them as one unit of work and misses a flush() in a loop. '
+                .'Set doctrine.dbal.use_savepoints: true (DBAL 3 defaults to false; DBAL 4 always uses savepoints).',
                 $name,
             );
         }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace QueryGuard\Adapter\Doctrine;
 
+use Doctrine\ORM\EntityManagerInterface;
 use QueryGuard\Adapter\QueryEnricher;
 use QueryGuard\Collector\QueryCollector;
 use QueryGuard\Query\CallsiteResolver;
@@ -117,6 +118,10 @@ final class Recorder
 
         if (self::insideCommit($stack)) {
             $annotations[DoctrineEnricher::COMMIT] = self::$transactions;
+
+            if (self::nestedWithoutSavepoint($stack)) {
+                DoctrineAdapter::flushesMerged($connection);
+            }
         }
 
         $callsite = $this->callsiteResolver->resolve($stack);
@@ -155,6 +160,41 @@ final class Recorder
         }
 
         return null;
+    }
+
+    /**
+     * Whether this flush runs inside an outer transaction that DBAL nests without a savepoint.
+     *
+     * Then the flush reaches the driver with neither a begin nor a `SAVEPOINT` of its own —
+     * nothing marks where it starts, and it gets the commit number of the flush before it.
+     * DBAL 3 nests that way unless asked otherwise (`use_savepoints` in DoctrineBundle);
+     * DBAL 4 always uses savepoints.
+     *
+     * `EntityManagerInterface` by `instanceof` only, which needs no autoloading: without
+     * `doctrine/orm` there is no flush to look at in the first place.
+     *
+     * @param list<array<string, mixed>> $stack
+     */
+    private static function nestedWithoutSavepoint(array $stack): bool
+    {
+        if (Dbal::isVersion4()) {
+            return false;
+        }
+
+        // not the DBAL connection's own frame: ORM 2 writes through `prepare()` and
+        // `Statement::executeStatement()`, so the connection never shows up in the stack —
+        // the entity manager that called `flush()` always does
+        foreach ($stack as $frame) {
+            $object = $frame['object'] ?? null;
+
+            if ($object instanceof EntityManagerInterface) {
+                $connection = $object->getConnection();
+
+                return $connection->getTransactionNestingLevel() > 1 && !$connection->getNestTransactionsWithSavepoints();
+            }
+        }
+
+        return false;
     }
 
     /**
